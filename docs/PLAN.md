@@ -439,8 +439,8 @@ Ich habe neun Dinge selbst entschieden, die du nicht ausdrücklich vorgegeben ha
 
 **Offene Punkte**
 
-- Name für den MIT-Copyright-Hinweis (Claude Code fragt in S0).
-- GitHub-Benutzername oder -Organisation für das Image auf ghcr.io.
+- ~~Name für den MIT-Copyright-Hinweis~~ Geklärt in S0: Andreas Link.
+- ~~GitHub-Benutzername oder -Organisation für das Image auf ghcr.io~~ Geklärt: Repo `https://github.com/andreaslink-de/scrn`, Image `ghcr.io/andreaslink-de/scrn`.
 - Standardwert des Speicherkontingents (Vorschlag: 1024 MB pro Nutzer, einstellbar mit SCRN\_DEFAULT\_QUOTA\_MB, pro Nutzer vom Admin änderbar).
 
 **Quellen** (Suchergebnisse vom 5. November 2026, die Seiten wurden nicht einzeln geöffnet)
