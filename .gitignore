@@ -1,0 +1,17 @@
+# Rust build output
+/target/
+**/*.rs.bk
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+
+# Persistent data (SQLite database and screenshot files)
+/data/
+
+# Editors and OS files
+.idea/
+.vscode/
+*.swp
+.DS_Store
