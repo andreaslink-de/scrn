@@ -9,8 +9,12 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
-axum = { version = "0.8.9", default-features = false, features = ["http1", "tokio", "query", "json"] }
+argon2 = "0.6.0"
+axum = { version = "0.8.9", default-features = false, features = ["http1", "tokio", "query", "json", "form"] }
+getrandom = "0.4.3"
 scrn-proto = { path = "../scrn-proto" }
+serde = { version = "1.0.229", features = ["derive"] }
+sha2 = "0.11.1"
 sqlx = { version = "0.9.0", default-features = false, features = ["runtime-tokio", "sqlite-bundled", "migrate", "macros"] }
 thiserror = "2.0.21"
 tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros", "net", "signal", "time", "io-util"] }

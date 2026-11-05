@@ -89,6 +89,29 @@ pub async fn create(
     Ok(user)
 }
 
+/// Creates the first account as admin, but only while the table is empty.
+/// The check and the insert are one statement, so two concurrent setup
+/// requests cannot both succeed. Returns `None` if a user already exists.
+pub async fn create_first_admin(
+    db: impl SqliteExecutor<'_>,
+    username: &str,
+    password_hash: &str,
+    now: i64,
+) -> Result<Option<User>, RepoError> {
+    let sql = concat!(
+        "INSERT INTO users (username, password_hash, role, created_at) ",
+        "SELECT ?, ?, 'admin', ? WHERE NOT EXISTS (SELECT 1 FROM users) ",
+        "RETURNING ",
+        columns!()
+    );
+    Ok(sqlx::query_as(sql)
+        .bind(username)
+        .bind(password_hash)
+        .bind(now)
+        .fetch_optional(db)
+        .await?)
+}
+
 pub async fn get_by_id(db: impl SqliteExecutor<'_>, id: i64) -> Result<Option<User>, RepoError> {
     let sql = concat!("SELECT ", columns!(), " FROM users WHERE id = ?");
     Ok(sqlx::query_as(sql).bind(id).fetch_optional(db).await?)
@@ -182,6 +205,23 @@ mod tests {
             Some(created)
         );
         assert_eq!(get_by_username(&pool, "bob").await.unwrap(), None);
+        assert_eq!(count(&pool).await.unwrap(), 1);
+    }
+
+    #[tokio::test]
+    async fn first_admin_only_while_empty() {
+        let (_dir, pool) = test_util::pool().await;
+        let admin = create_first_admin(&pool, "root", "$argon2id$x", 5)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(admin.role, Role::Admin);
+        assert_eq!(
+            create_first_admin(&pool, "other", "$argon2id$x", 6)
+                .await
+                .unwrap(),
+            None
+        );
         assert_eq!(count(&pool).await.unwrap(), 1);
     }
 

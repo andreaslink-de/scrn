@@ -1,0 +1,73 @@
+# English UI catalog. Keep the keys in sync with de.txt.
+
+app.name = SCRN
+
+nav.home = Overview
+nav.admin = Administration
+nav.logout = Sign out
+
+field.username = Username
+field.username_hint = 1 to 64 characters: letters, digits, dot, hyphen and underscore.
+field.password = Password
+field.password_confirm = Repeat password
+field.password_hint = At least {min} characters.
+
+setup.title = Setup
+setup.intro = Create the administrator account. The one-time setup code is printed in the server log.
+setup.token = Setup code
+setup.submit = Create administrator
+
+login.title = Sign in
+login.submit = Sign in
+
+invite.title = Register
+invite.intro = You have been invited to SCRN. Choose a username and a password.
+invite.submit = Create account
+
+home.title = Overview
+home.signed_in_as = Signed in as {username}.
+
+admin.title = Administration
+admin.users = Users
+admin.invites = Invitations
+admin.col.username = Username
+admin.col.role = Role
+admin.col.status = Status
+admin.col.created = Created
+admin.col.expires = Expires
+admin.col.actions = Actions
+admin.you = (you)
+admin.disable = Disable
+admin.enable = Enable
+admin.invite.create = Create invitation
+admin.invite.days = Valid for (days, 1 to 30)
+admin.invite.revoke = Revoke
+admin.invite.none = No invitations yet.
+admin.invite.created = Invitation link created. It is shown only this once:
+
+role.admin = Administrator
+role.user = User
+status.active = Active
+status.disabled = Disabled
+invite.status.open = Open
+invite.status.used = Used
+invite.status.expired = Expired
+
+error.title = Error
+error.back = Back to the start page
+error.not_found = The page was not found.
+error.forbidden = You are not allowed to do that.
+error.bad_request = The request is invalid.
+error.csrf = The form has expired. Reload the page and try again.
+error.internal = An internal error occurred.
+error.too_many_attempts = Too many attempts. Please wait a few minutes.
+error.login_failed = Username or password is incorrect.
+error.username_invalid = The username is invalid.
+error.username_taken = This username is already taken.
+error.password_too_short = The password must be at least {min} characters long.
+error.password_too_long = The password must be at most {max} characters long.
+error.password_mismatch = The passwords do not match.
+error.setup_token_invalid = The setup code is invalid.
+error.invite_invalid = This invitation is invalid, has expired or has already been used.
+error.invite_days = The validity must be between 1 and 30 days.
+error.cannot_disable_self = You cannot disable your own account.

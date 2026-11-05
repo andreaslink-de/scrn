@@ -49,6 +49,24 @@ lives in `./data`, mounted at `/data`. Database migrations run automatically on
 startup. The port is published on `127.0.0.1` only; put a reverse proxy with
 TLS in front of it.
 
+### First start
+
+On the first start without any user account, the server writes a one-time
+setup token to its log:
+
+```sh
+docker compose logs scrn | grep setup_token
+```
+
+Open `<SCRN_BASE_URL>/setup`, enter the token and create the administrator
+account (password at least 12 characters). The setup page is locked
+afterwards. A restart before the setup is finished prints a new token.
+
+New users can only register through an invitation link: create one on the
+administration page (`/admin`), it is single-use and expires after the chosen
+number of days. Administrators can disable accounts, which also ends their
+sessions.
+
 ### Configuration
 
 All settings are environment variables, documented in

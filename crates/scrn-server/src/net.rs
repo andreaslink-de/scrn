@@ -1,7 +1,4 @@
-//! IP address ranges for the list of trusted reverse proxies.
-//!
-//! Only the configuration lives here for now. Extracting the client IP from
-//! `X-Forwarded-For` follows together with rate limiting.
+//! Trusted reverse proxies and client IP resolution.
 
 use std::fmt;
 use std::net::IpAddr;
@@ -97,6 +94,38 @@ impl TrustedProxies {
     }
 }
 
+/// Determines the client IP of a request.
+///
+/// `X-Forwarded-For` is only honored when the direct peer is a trusted
+/// proxy. The header is then read from right to left, skipping further
+/// trusted proxies; the first untrusted address is the client. Anything
+/// unparsable stops the walk, so a client cannot inject arbitrary values
+/// left of what the proxy appended.
+pub fn client_ip<'a>(
+    peer: IpAddr,
+    forwarded_for: impl Iterator<Item = &'a str>,
+    trusted: &TrustedProxies,
+) -> IpAddr {
+    let peer = normalize(peer);
+    if !trusted.contains(peer) {
+        return peer;
+    }
+    let hops: Vec<&str> = forwarded_for.flat_map(|v| v.split(',')).collect();
+    let mut client = peer;
+    for hop in hops.iter().rev() {
+        match hop.trim().parse::<IpAddr>() {
+            Ok(ip) => {
+                client = normalize(ip);
+                if !trusted.contains(client) {
+                    break;
+                }
+            }
+            Err(_) => break,
+        }
+    }
+    client
+}
+
 fn normalize(ip: IpAddr) -> IpAddr {
     match ip {
         IpAddr::V6(v6) => v6.to_ipv4_mapped().map_or(ip, IpAddr::V4),
@@ -165,6 +194,63 @@ mod tests {
         ] {
             assert_eq!(s.parse::<IpNet>(), Err(ParseIpNetError), "{s:?}");
         }
+    }
+
+    fn proxies(list: &[&str]) -> TrustedProxies {
+        TrustedProxies::new(list.iter().map(|s| s.parse().unwrap()).collect())
+    }
+
+    fn resolve(peer: &str, headers: &[&str], trusted: &TrustedProxies) -> IpAddr {
+        client_ip(ip(peer), headers.iter().copied(), trusted)
+    }
+
+    #[test]
+    fn untrusted_peer_ignores_forwarded_for() {
+        let trusted = proxies(&["172.18.0.0/16"]);
+        assert_eq!(
+            resolve("203.0.113.9", &["1.2.3.4"], &trusted),
+            ip("203.0.113.9")
+        );
+        let nobody = TrustedProxies::default();
+        assert_eq!(
+            resolve("203.0.113.9", &["1.2.3.4"], &nobody),
+            ip("203.0.113.9")
+        );
+    }
+
+    #[test]
+    fn trusted_peer_uses_rightmost_untrusted_hop() {
+        let trusted = proxies(&["172.18.0.0/16", "10.0.0.1"]);
+        // The client spoofs 6.6.6.6, NPM appends the real client address and
+        // an inner proxy appends its own.
+        let got = resolve(
+            "172.18.0.2",
+            &["6.6.6.6, 198.51.100.7", "10.0.0.1"],
+            &trusted,
+        );
+        assert_eq!(got, ip("198.51.100.7"));
+    }
+
+    #[test]
+    fn trusted_peer_without_header_is_the_client() {
+        let trusted = proxies(&["172.18.0.0/16"]);
+        assert_eq!(resolve("172.18.0.2", &[], &trusted), ip("172.18.0.2"));
+    }
+
+    #[test]
+    fn garbage_in_forwarded_for_stops_the_walk() {
+        let trusted = proxies(&["172.18.0.0/16"]);
+        let got = resolve("172.18.0.2", &["1.2.3.4, garbage"], &trusted);
+        assert_eq!(got, ip("172.18.0.2"));
+    }
+
+    #[test]
+    fn mapped_peer_address_is_normalized() {
+        let trusted = proxies(&["127.0.0.1"]);
+        assert_eq!(
+            resolve("::ffff:127.0.0.1", &["192.0.2.1"], &trusted),
+            ip("192.0.2.1")
+        );
     }
 
     #[test]
