@@ -5,6 +5,7 @@ pub mod config;
 pub mod db;
 pub mod healthcheck;
 pub mod net;
+pub mod repo;
 pub mod routes;
 
 use std::future::Future;

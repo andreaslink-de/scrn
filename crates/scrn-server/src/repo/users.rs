@@ -1,0 +1,269 @@
+//! The `users` table.
+
+use sqlx::{FromRow, SqliteExecutor};
+
+use super::RepoError;
+
+/// Account role.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, sqlx::Type)]
+#[sqlx(rename_all = "lowercase")]
+pub enum Role {
+    Admin,
+    User,
+}
+
+/// UI language.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, sqlx::Type)]
+#[sqlx(rename_all = "lowercase")]
+pub enum Language {
+    De,
+    En,
+}
+
+/// UI color theme.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, sqlx::Type)]
+#[sqlx(rename_all = "lowercase")]
+pub enum Theme {
+    Dark,
+    Light,
+}
+
+/// A row of the `users` table.
+#[derive(Debug, Clone, PartialEq, Eq, FromRow)]
+pub struct User {
+    pub id: i64,
+    pub username: String,
+    pub password_hash: Option<String>,
+    pub role: Role,
+    pub language: Language,
+    pub theme: Theme,
+    /// Default expiry of new public links in days, 0 means never.
+    pub default_expiry_days: i64,
+    /// `None` means the server default, `Some(0)` means unlimited.
+    pub quota_bytes: Option<i64>,
+    pub created_at: i64,
+    pub disabled_at: Option<i64>,
+}
+
+impl User {
+    pub fn is_disabled(&self) -> bool {
+        self.disabled_at.is_some()
+    }
+}
+
+/// Values for a new user. Settings start with their defaults.
+#[derive(Debug, Clone)]
+pub struct NewUser<'a> {
+    pub username: &'a str,
+    pub password_hash: Option<&'a str>,
+    pub role: Role,
+}
+
+/// Selected columns, shared by all queries of this module.
+macro_rules! columns {
+    () => {
+        "id, username, password_hash, role, language, theme, \
+    default_expiry_days, quota_bytes, created_at, disabled_at"
+    };
+}
+
+/// Creates a user. Returns [`RepoError::Conflict`] if the username exists
+/// (compared case-insensitively).
+pub async fn create(
+    db: impl SqliteExecutor<'_>,
+    new: &NewUser<'_>,
+    now: i64,
+) -> Result<User, RepoError> {
+    let sql = concat!(
+        "INSERT INTO users (username, password_hash, role, created_at) \
+         VALUES (?, ?, ?, ?) RETURNING ",
+        columns!()
+    );
+    let user = sqlx::query_as(sql)
+        .bind(new.username)
+        .bind(new.password_hash)
+        .bind(new.role)
+        .bind(now)
+        .fetch_one(db)
+        .await?;
+    Ok(user)
+}
+
+pub async fn get_by_id(db: impl SqliteExecutor<'_>, id: i64) -> Result<Option<User>, RepoError> {
+    let sql = concat!("SELECT ", columns!(), " FROM users WHERE id = ?");
+    Ok(sqlx::query_as(sql).bind(id).fetch_optional(db).await?)
+}
+
+/// Looks up a user by name, case-insensitively.
+pub async fn get_by_username(
+    db: impl SqliteExecutor<'_>,
+    username: &str,
+) -> Result<Option<User>, RepoError> {
+    let sql = concat!("SELECT ", columns!(), " FROM users WHERE username = ?");
+    Ok(sqlx::query_as(sql)
+        .bind(username)
+        .fetch_optional(db)
+        .await?)
+}
+
+/// Number of users, used to detect the first start.
+pub async fn count(db: impl SqliteExecutor<'_>) -> Result<i64, RepoError> {
+    Ok(sqlx::query_scalar("SELECT COUNT(*) FROM users")
+        .fetch_one(db)
+        .await?)
+}
+
+/// All users ordered by name.
+pub async fn list(db: impl SqliteExecutor<'_>) -> Result<Vec<User>, RepoError> {
+    let sql = concat!("SELECT ", columns!(), " FROM users ORDER BY username");
+    Ok(sqlx::query_as(sql).fetch_all(db).await?)
+}
+
+/// Disables (`Some(now)`) or re-enables (`None`) a user. Returns false if
+/// the user does not exist.
+pub async fn set_disabled(
+    db: impl SqliteExecutor<'_>,
+    id: i64,
+    disabled_at: Option<i64>,
+) -> Result<bool, RepoError> {
+    let result = sqlx::query("UPDATE users SET disabled_at = ? WHERE id = ?")
+        .bind(disabled_at)
+        .bind(id)
+        .execute(db)
+        .await?;
+    Ok(result.rows_affected() == 1)
+}
+
+/// Deletes a user and, through the foreign keys, all of their data.
+/// Returns false if the user does not exist.
+pub async fn delete(db: impl SqliteExecutor<'_>, id: i64) -> Result<bool, RepoError> {
+    let result = sqlx::query("DELETE FROM users WHERE id = ?")
+        .bind(id)
+        .execute(db)
+        .await?;
+    Ok(result.rows_affected() == 1)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::repo::test_util;
+
+    #[tokio::test]
+    async fn create_and_read_with_defaults() {
+        let (_dir, pool) = test_util::pool().await;
+        let created = create(
+            &pool,
+            &NewUser {
+                username: "Alice",
+                password_hash: Some("$argon2id$x"),
+                role: Role::Admin,
+            },
+            42,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(created.username, "Alice");
+        assert_eq!(created.role, Role::Admin);
+        assert_eq!(created.language, Language::De);
+        assert_eq!(created.theme, Theme::Dark);
+        assert_eq!(created.default_expiry_days, 0);
+        assert_eq!(created.quota_bytes, None);
+        assert_eq!(created.created_at, 42);
+        assert!(!created.is_disabled());
+
+        assert_eq!(
+            get_by_id(&pool, created.id).await.unwrap(),
+            Some(created.clone())
+        );
+        assert_eq!(
+            get_by_username(&pool, "alice").await.unwrap(),
+            Some(created)
+        );
+        assert_eq!(get_by_username(&pool, "bob").await.unwrap(), None);
+        assert_eq!(count(&pool).await.unwrap(), 1);
+    }
+
+    #[tokio::test]
+    async fn usernames_are_unique_case_insensitively() {
+        let (_dir, pool) = test_util::pool().await;
+        test_util::user(&pool, "alice").await;
+        let err = create(
+            &pool,
+            &NewUser {
+                username: "ALICE",
+                password_hash: None,
+                role: Role::User,
+            },
+            1,
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(err, RepoError::Conflict));
+    }
+
+    #[tokio::test]
+    async fn rejects_empty_username() {
+        let (_dir, pool) = test_util::pool().await;
+        let err = create(
+            &pool,
+            &NewUser {
+                username: "",
+                password_hash: None,
+                role: Role::User,
+            },
+            1,
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(err, RepoError::Db(_)));
+    }
+
+    #[tokio::test]
+    async fn list_is_sorted_by_name() {
+        let (_dir, pool) = test_util::pool().await;
+        test_util::user(&pool, "carol").await;
+        test_util::user(&pool, "alice").await;
+        let names: Vec<_> = list(&pool)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|u| u.username)
+            .collect();
+        assert_eq!(names, ["alice", "carol"]);
+    }
+
+    #[tokio::test]
+    async fn disable_and_enable() {
+        let (_dir, pool) = test_util::pool().await;
+        let user = test_util::user(&pool, "alice").await;
+        assert!(set_disabled(&pool, user.id, Some(7)).await.unwrap());
+        assert_eq!(
+            get_by_id(&pool, user.id)
+                .await
+                .unwrap()
+                .unwrap()
+                .disabled_at,
+            Some(7)
+        );
+        assert!(set_disabled(&pool, user.id, None).await.unwrap());
+        assert!(
+            !get_by_id(&pool, user.id)
+                .await
+                .unwrap()
+                .unwrap()
+                .is_disabled()
+        );
+        assert!(!set_disabled(&pool, 999, Some(1)).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn delete_removes_user() {
+        let (_dir, pool) = test_util::pool().await;
+        let user = test_util::user(&pool, "alice").await;
+        assert!(delete(&pool, user.id).await.unwrap());
+        assert!(!delete(&pool, user.id).await.unwrap());
+        assert_eq!(get_by_id(&pool, user.id).await.unwrap(), None);
+    }
+}
