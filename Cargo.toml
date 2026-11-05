@@ -1,0 +1,18 @@
+[workspace]
+resolver = "3"
+members = ["crates/scrn-proto", "crates/scrn-server"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+authors = ["Andreas Link"]
+repository = "https://github.com/andreaslink-de/scrn"
+publish = false
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+unwrap_used = "warn"
+expect_used = "warn"
