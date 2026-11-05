@@ -1,0 +1,3 @@
+# Tests may use unwrap() and expect(); request paths may not (see CLAUDE.md).
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
