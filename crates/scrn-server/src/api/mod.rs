@@ -3,6 +3,7 @@
 //! accepted here, so the API needs no CSRF protection.
 
 mod me;
+mod screenshots;
 
 use axum::Json;
 use axum::Router;
@@ -12,7 +13,7 @@ use axum::http::request::Parts;
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
-use axum::routing::get;
+use axum::routing::{delete, get};
 use scrn_proto::ApiErrorBody;
 
 use crate::AppState;
@@ -27,6 +28,11 @@ pub const TOKEN_TOUCH_INTERVAL: i64 = 60;
 pub fn router(state: AppState) -> Router<AppState> {
     Router::new()
         .route("/me", get(me::me))
+        .route(
+            "/screenshots",
+            get(screenshots::list).post(screenshots::upload),
+        )
+        .route("/screenshots/{id}", delete(screenshots::delete))
         .fallback(not_found)
         // `layer` (not `route_layer`) so that unknown paths need a token too
         // and do not reveal which endpoints exist.
@@ -44,6 +50,18 @@ pub enum ApiError {
     Unauthorized,
     #[error("not found")]
     NotFound,
+    #[error("{0}")]
+    BadRequest(&'static str),
+    #[error("the body must be a PNG image (Content-Type: image/png)")]
+    UnsupportedMediaType,
+    #[error("the request body is too large")]
+    PayloadTooLarge,
+    #[error("the image exceeds the size limits")]
+    ImageTooLarge,
+    #[error("the body is not a valid PNG image")]
+    InvalidImage,
+    #[error("the storage quota is exceeded")]
+    QuotaExceeded { used: i64, limit: i64 },
     #[error("internal error: {0}")]
     Internal(String),
 }
@@ -54,30 +72,47 @@ impl From<RepoError> for ApiError {
     }
 }
 
+impl From<sqlx::Error> for ApiError {
+    fn from(err: sqlx::Error) -> Self {
+        Self::Internal(format!("database error: {err}"))
+    }
+}
+
+impl From<crypto::CryptoError> for ApiError {
+    fn from(err: crypto::CryptoError) -> Self {
+        Self::Internal(err.to_string())
+    }
+}
+
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
-        let (status, code, message) = match &self {
-            Self::Unauthorized => (
-                StatusCode::UNAUTHORIZED,
-                "unauthorized",
-                "missing or invalid API token",
-            ),
-            Self::NotFound => (StatusCode::NOT_FOUND, "not_found", "not found"),
+        let (status, code) = match &self {
+            Self::Unauthorized => (StatusCode::UNAUTHORIZED, "unauthorized"),
+            Self::NotFound => (StatusCode::NOT_FOUND, "not_found"),
+            Self::BadRequest(_) => (StatusCode::BAD_REQUEST, "invalid_request"),
+            Self::UnsupportedMediaType => {
+                (StatusCode::UNSUPPORTED_MEDIA_TYPE, "unsupported_media_type")
+            }
+            Self::PayloadTooLarge => (StatusCode::PAYLOAD_TOO_LARGE, "payload_too_large"),
+            Self::ImageTooLarge => (StatusCode::PAYLOAD_TOO_LARGE, "image_too_large"),
+            Self::InvalidImage => (StatusCode::UNPROCESSABLE_ENTITY, "invalid_image"),
+            Self::QuotaExceeded { .. } => (StatusCode::PAYLOAD_TOO_LARGE, "quota_exceeded"),
             Self::Internal(detail) => {
                 tracing::error!(error = %detail, "API request failed");
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "internal",
-                    "internal server error",
-                )
+                (StatusCode::INTERNAL_SERVER_ERROR, "internal")
             }
         };
-        let body = ApiErrorBody {
-            error: code.to_owned(),
-            message: message.to_owned(),
+        let message = match &self {
+            Self::Internal(_) => "internal server error".to_owned(),
+            other => other.to_string(),
         };
+        let mut body = ApiErrorBody::new(code, &message);
+        if let Self::QuotaExceeded { used, limit } = self {
+            body.used_bytes = u64::try_from(used).ok();
+            body.quota_bytes = u64::try_from(limit).ok();
+        }
         let mut response = (status, Json(body)).into_response();
-        if matches!(self, Self::Unauthorized) {
+        if status == StatusCode::UNAUTHORIZED {
             response
                 .headers_mut()
                 .insert(WWW_AUTHENTICATE, HeaderValue::from_static("Bearer"));

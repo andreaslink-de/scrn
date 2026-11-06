@@ -271,6 +271,17 @@ pub async fn delete_for_user(
     Ok(result.rows_affected() == 1)
 }
 
+/// Storage used by a user in bytes: images plus thumbnails.
+pub async fn usage_for_user(db: impl SqliteExecutor<'_>, user_id: i64) -> Result<i64, RepoError> {
+    let (used,): (i64,) = sqlx::query_as(
+        "SELECT COALESCE(SUM(bytes + thumb_bytes), 0) FROM screenshots WHERE user_id = ?",
+    )
+    .bind(user_id)
+    .fetch_one(db)
+    .await?;
+    Ok(used)
+}
+
 fn split_link(link: Option<&PublicLink>) -> (Visibility, Option<&str>, Option<i64>) {
     match link {
         Some(link) => (
@@ -305,6 +316,20 @@ mod tests {
             short_id: short_id.to_owned(),
             expires_at,
         }
+    }
+
+    #[tokio::test]
+    async fn usage_sums_images_and_thumbnails_per_user() {
+        let (_dir, pool) = test_util::pool().await;
+        let alice = test_util::user(&pool, "alice").await;
+        let bob = test_util::user(&pool, "bob").await;
+        assert_eq!(usage_for_user(&pool, alice.id).await.unwrap(), 0);
+        let shot = insert(&pool, &new(alice.id, None), 100).await.unwrap();
+        insert(&pool, &new(alice.id, None), 100).await.unwrap();
+        insert(&pool, &new(bob.id, None), 100).await.unwrap();
+        assert_eq!(usage_for_user(&pool, alice.id).await.unwrap(), 2200);
+        delete_for_user(&pool, shot.id, alice.id).await.unwrap();
+        assert_eq!(usage_for_user(&pool, alice.id).await.unwrap(), 1100);
     }
 
     #[tokio::test]

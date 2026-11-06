@@ -79,6 +79,24 @@ curl -H "Authorization: Bearer scrn_…" <SCRN_BASE_URL>/api/v1/me
 
 Revoked tokens and tokens of disabled accounts are rejected with 401.
 
+### Uploading
+
+```sh
+curl -X POST -H "Authorization: Bearer scrn_…" -H "Content-Type: image/png" \
+  --data-binary @shot.png "<SCRN_BASE_URL>/api/v1/screenshots?visibility=public"
+```
+
+Uploads are PNG only (at most 20 MiB and 100 megapixels). The server decodes
+and re-encodes every image, which removes all metadata, and stores it with a
+thumbnail under `data/files`. Public screenshots get a short link;
+`expires_in_days` sets its lifetime (default: the user's setting, 0 means
+never). `GET /api/v1/screenshots?limit=N` lists the newest screenshots and
+`DELETE /api/v1/screenshots/<id>` deletes one.
+
+Each user has a storage quota (`SCRN_DEFAULT_QUOTA_MB` unless set per user,
+0 means unlimited). Uploads beyond it fail with 413 and the code
+`quota_exceeded`; lowering a quota never deletes anything.
+
 ### Configuration
 
 All settings are environment variables, documented in
@@ -91,6 +109,7 @@ All settings are environment variables, documented in
 | `SCRN_DATA_DIR` | `/data` | Database and screenshot files |
 | `SCRN_COOKIE_SECURE` | `true` | `Secure` flag on session cookies |
 | `SCRN_TRUSTED_PROXIES` | empty | IPs or CIDR ranges allowed to set `X-Forwarded-*` |
+| `SCRN_DEFAULT_QUOTA_MB` | `1024` | Storage quota per user in MiB, 0 for unlimited |
 | `RUST_LOG` | `info` | Log filter |
 | `SCRN_LOG_FORMAT` | `text` | `text` or `json` |
 

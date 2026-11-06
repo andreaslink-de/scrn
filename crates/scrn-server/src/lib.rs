@@ -12,10 +12,13 @@ pub mod error;
 pub mod healthcheck;
 pub mod html;
 pub mod i18n;
+pub mod image;
 pub mod net;
 pub mod rate_limit;
 pub mod repo;
 pub mod routes;
+pub mod short_id;
+pub mod storage;
 
 use std::future::Future;
 use std::net::SocketAddr;
@@ -37,6 +40,9 @@ pub const LOGIN_FAILURES_PER_USER: u32 = 10;
 /// Rate limit window for logins in seconds.
 pub const LOGIN_WINDOW: i64 = 15 * 60;
 
+/// Uploads decoded in parallel.
+pub const IMAGE_WORKERS: usize = 2;
+
 /// Shared state passed to all request handlers.
 #[derive(Clone)]
 pub struct AppState {
@@ -50,6 +56,9 @@ pub struct AppState {
     /// Hash verified for unknown usernames so that the response time does
     /// not reveal whether an account exists.
     pub dummy_password_hash: Arc<str>,
+    /// Limits how many uploads are decoded at the same time, which bounds
+    /// memory use (a 100-megapixel image needs about 400 MiB).
+    pub image_permits: Arc<tokio::sync::Semaphore>,
 }
 
 impl AppState {
@@ -147,6 +156,7 @@ pub async fn init_state_with_clock(
         login_ip_limiter: Arc::new(RateLimiter::new(LOGIN_ATTEMPTS_PER_IP, LOGIN_WINDOW)),
         login_user_limiter: Arc::new(RateLimiter::new(LOGIN_FAILURES_PER_USER, LOGIN_WINDOW)),
         dummy_password_hash,
+        image_permits: Arc::new(tokio::sync::Semaphore::new(IMAGE_WORKERS)),
     })
 }
 
