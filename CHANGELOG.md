@@ -6,23 +6,7 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-### Added
-
-- View counter for public links, shown in the gallery, on the detail page
-  and as `views` in the API.
-- Backup download in the administration: a tar archive with a consistent
-  database snapshot and all screenshot files, streamed without storing a
-  copy on the server.
-
-### Changed
-
-- Times in the web UI are shown in the browser's time zone (detected
-  automatically, UTC without JavaScript). A chosen expiry date ends at
-  local midnight.
-- Screenshot files are stored per user in `files/<user id>/`. Files of the
-  earlier flat layout are moved there at startup.
-
-## [0.1.0] - unreleased
+## [0.1.0] - 2026-11-06
 
 First release of the SCRN server.
 
@@ -43,9 +27,14 @@ First release of the SCRN server.
   unknown, private and expired links; expired links become private
   automatically.
 - Web UI in German and English with dark and light theme: gallery with
-  filter, copy button and detail view, settings, administration.
+  filter, copy button and detail view, settings, administration. Times are
+  shown in the browser's time zone.
+- View counter for public links, shown in the gallery, on the detail page
+  and as `views` in the API.
+- Screenshot files stored per user in `files/<user id>/`.
 - Security headers on every response, request timeouts and body limits.
-- `scrn-server backup` and `scripts/backup.sh` for consistent backups.
+- Consistent backups while the server keeps running: a download in the
+  administration, `scripts/backup.sh` and `scrn-server backup`.
 
 [Unreleased]: https://github.com/andreaslink-de/scrn/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/andreaslink-de/scrn/releases/tag/v0.1.0
