@@ -145,6 +145,12 @@ A public screenshot is served at `<SCRN_BASE_URL>/<short_id>` (also with
 Browsers may cache an image for at most five minutes (never beyond the link's
 expiry), and each client IP may fetch 300 links per minute.
 
+Each delivery of a short link counts as a view, revalidations by the
+browser included; `HEAD` requests do not count. Link previews of messengers
+are counted too, as they cannot be told apart reliably. The gallery and the
+API (`views`) show the count of the current link; it starts at 0 whenever a
+screenshot gets a new link and is dropped when it becomes private.
+
 Expired links stop working immediately. A maintenance job runs at startup
 and every five minutes: it turns expired public screenshots into private
 ones (they stay in the gallery), deletes expired sessions and removes image

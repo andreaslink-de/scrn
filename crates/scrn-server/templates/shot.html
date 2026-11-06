@@ -15,6 +15,7 @@
 <dt>{{ page.t("shot.created") }}</dt><dd>{{ page.time(created_at) }}</dd>
 <dt>{{ page.t("shot.visibility") }}</dt><dd>{% if expired %}{{ page.t("shot.expired") }}{% else if public %}{{ page.t("shot.public") }}{% else %}{{ page.t("shot.private") }}{% endif %}</dd>
 {% if public %}<dt>{{ page.t("shot.expires") }}</dt><dd>{% match expires_at %}{% when Some(at) %}{{ page.time(at) }}{% when None %}{{ page.t("expiry.never") }}{% endmatch %}</dd>{% endif %}
+{% if short_url.is_some() %}<dt>{{ page.t("shot.views") }}</dt><dd>{{ views }}</dd>{% endif %}
 </dl>
 {% if let Some(url) = short_url %}{% let input_id = "short-url".to_owned() %}
 <p class="label">{{ page.t("shot.short_url") }}</p>

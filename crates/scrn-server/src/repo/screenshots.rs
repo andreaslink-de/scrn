@@ -39,6 +39,8 @@ pub struct Screenshot {
     pub thumb_bytes: i64,
     pub sha256: Sha256,
     pub created_at: i64,
+    /// How often the current short link was opened; 0 for private ones.
+    pub views: i64,
 }
 
 impl Screenshot {
@@ -77,6 +79,7 @@ struct Row {
     sha256: Vec<u8>,
     created_at: i64,
     expires_at: Option<i64>,
+    views: i64,
 }
 
 impl TryFrom<Row> for Screenshot {
@@ -102,6 +105,7 @@ impl TryFrom<Row> for Screenshot {
             thumb_bytes: row.thumb_bytes,
             sha256: to_sha256("sha256", row.sha256)?,
             created_at: row.created_at,
+            views: row.views,
         })
     }
 }
@@ -110,7 +114,7 @@ impl TryFrom<Row> for Screenshot {
 macro_rules! columns {
     () => {
         "id, user_id, visibility, short_id, width, height, bytes, \
-    thumb_bytes, sha256, created_at, expires_at"
+    thumb_bytes, sha256, created_at, expires_at, views"
     };
 }
 
@@ -225,7 +229,7 @@ pub async fn set_public(
     link: &PublicLink,
 ) -> Result<bool, RepoError> {
     let result = sqlx::query(
-        "UPDATE screenshots SET visibility = 'public', short_id = ?, expires_at = ? \
+        "UPDATE screenshots SET visibility = 'public', short_id = ?, expires_at = ?, views = 0 \
          WHERE id = ? AND user_id = ?",
     )
     .bind(&link.short_id)
@@ -266,7 +270,8 @@ pub async fn set_private(
     user_id: i64,
 ) -> Result<bool, RepoError> {
     let result = sqlx::query(
-        "UPDATE screenshots SET visibility = 'private', short_id = NULL, expires_at = NULL \
+        "UPDATE screenshots \
+         SET visibility = 'private', short_id = NULL, expires_at = NULL, views = 0 \
          WHERE id = ? AND user_id = ?",
     )
     .bind(id.to_string())
@@ -296,13 +301,27 @@ pub async fn delete_for_user(
 /// Returns the number of screenshots changed.
 pub async fn expire_due(db: impl SqliteExecutor<'_>, now: i64) -> Result<u64, RepoError> {
     let result = sqlx::query(
-        "UPDATE screenshots SET visibility = 'private', short_id = NULL, expires_at = NULL \
+        "UPDATE screenshots \
+         SET visibility = 'private', short_id = NULL, expires_at = NULL, views = 0 \
          WHERE visibility = 'public' AND expires_at IS NOT NULL AND expires_at <= ?",
     )
     .bind(now)
     .execute(db)
     .await?;
     Ok(result.rows_affected())
+}
+
+/// Counts one opening of the public link `short_id`. Does nothing if the
+/// screenshot is private or gone by now.
+pub async fn count_view(db: impl SqliteExecutor<'_>, short_id: &str) -> Result<(), RepoError> {
+    sqlx::query(
+        "UPDATE screenshots SET views = views + 1 \
+         WHERE short_id = ? AND visibility = 'public'",
+    )
+    .bind(short_id)
+    .execute(db)
+    .await?;
+    Ok(())
 }
 
 /// The owner of a screenshot, or `None` if no screenshot has this ID.
@@ -671,5 +690,60 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(left, 0);
+    }
+
+    async fn views(pool: &sqlx::SqlitePool, id: Uuid) -> i64 {
+        let (views,): (i64,) = sqlx::query_as("SELECT views FROM screenshots WHERE id = ?")
+            .bind(id.to_string())
+            .fetch_one(pool)
+            .await
+            .unwrap();
+        views
+    }
+
+    #[tokio::test]
+    async fn views_count_the_current_link_only() {
+        let (_dir, pool) = test_util::pool().await;
+        let user = test_util::user(&pool, "alice").await;
+        let shot = insert(&pool, &new(user.id, Some(link("Views123", Some(500)))), 100)
+            .await
+            .unwrap();
+        let private = insert(&pool, &new(user.id, None), 100).await.unwrap();
+        assert_eq!(shot.views, 0);
+
+        count_view(&pool, "Views123").await.unwrap();
+        count_view(&pool, "Views123").await.unwrap();
+        count_view(&pool, "Unknown1").await.unwrap();
+        assert_eq!(views(&pool, shot.id).await, 2);
+        assert_eq!(views(&pool, private.id).await, 0);
+        // The expiry is part of the same link and keeps the count.
+        assert!(set_expiry(&pool, shot.id, user.id, None).await.unwrap());
+        assert_eq!(views(&pool, shot.id).await, 2);
+
+        // A new link starts from zero, and the old one counts nothing.
+        assert!(
+            set_public(&pool, shot.id, user.id, &link("Views456", None))
+                .await
+                .unwrap()
+        );
+        assert_eq!(views(&pool, shot.id).await, 0);
+        count_view(&pool, "Views123").await.unwrap();
+        count_view(&pool, "Views456").await.unwrap();
+        assert_eq!(views(&pool, shot.id).await, 1);
+
+        assert!(set_private(&pool, shot.id, user.id).await.unwrap());
+        assert_eq!(views(&pool, shot.id).await, 0);
+        count_view(&pool, "Views456").await.unwrap();
+        assert_eq!(views(&pool, shot.id).await, 0);
+
+        // Expired links lose their count as well.
+        assert!(
+            set_public(&pool, shot.id, user.id, &link("Views789", Some(200)))
+                .await
+                .unwrap()
+        );
+        count_view(&pool, "Views789").await.unwrap();
+        assert_eq!(expire_due(&pool, 300).await.unwrap(), 1);
+        assert_eq!(views(&pool, shot.id).await, 0);
     }
 }

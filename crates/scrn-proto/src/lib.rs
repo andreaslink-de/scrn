@@ -69,6 +69,10 @@ pub struct ScreenshotInfo {
     pub height: u32,
     /// Unix seconds of the upload.
     pub created_at: i64,
+    /// How often the current public link was opened; 0 for private
+    /// screenshots. Missing in responses of older servers.
+    #[serde(default)]
+    pub views: u64,
 }
 
 /// Response of `GET /api/v1/screenshots`, newest first.
@@ -125,14 +129,22 @@ mod tests {
             width: 2,
             height: 1,
             created_at: 7,
+            views: 0,
         };
         assert_eq!(
             serde_json::to_string(&private).unwrap(),
-            r#"{"id":"id","visibility":"private","expires_at":null,"width":2,"height":1,"created_at":7}"#
+            r#"{"id":"id","visibility":"private","expires_at":null,"width":2,"height":1,"created_at":7,"views":0}"#
+        );
+        // Responses of servers without the view counter still parse.
+        let old = r#"{"id":"id","visibility":"private","expires_at":null,"width":2,"height":1,"created_at":7}"#;
+        assert_eq!(
+            serde_json::from_str::<ScreenshotInfo>(old).unwrap(),
+            private
         );
         let public = ScreenshotInfo {
             visibility: Visibility::Public,
             short_url: Some("https://scrn.dev/abcdefgh".into()),
+            views: 3,
             ..private
         };
         let json = serde_json::to_string(&public).unwrap();

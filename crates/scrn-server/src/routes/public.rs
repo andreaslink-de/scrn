@@ -8,7 +8,7 @@ use axum::http::header::{
     CACHE_CONTROL, CONTENT_DISPOSITION, CONTENT_SECURITY_POLICY, CONTENT_TYPE, ETAG, IF_NONE_MATCH,
     REFERRER_POLICY, X_CONTENT_TYPE_OPTIONS,
 };
-use axum::http::{HeaderMap, HeaderValue, StatusCode};
+use axum::http::{HeaderMap, HeaderValue, Method, StatusCode};
 use axum::response::{IntoResponse, Response};
 
 use crate::auth::ClientIp;
@@ -28,6 +28,7 @@ pub async fn show(
     State(state): State<AppState>,
     ClientIp(ip): ClientIp,
     Path(name): Path<String>,
+    method: Method,
     headers: HeaderMap,
 ) -> Result<Response, AppError> {
     let now = state.clock.now();
@@ -101,6 +102,14 @@ pub async fn show(
         CACHE_CONTROL,
         header_value(&format!("public, max-age={max_age}")),
     );
+    // Every delivered opening counts, also a revalidation (304), because
+    // the browser shows the image again. HEAD only asks about it. A failed
+    // update is logged; the visitor still gets the image.
+    if method != Method::HEAD
+        && let Err(err) = screenshots::count_view(&state.db, id).await
+    {
+        tracing::warn!(screenshot_id = %shot.id, error = %err, "counting a view failed");
+    }
     Ok(response)
 }
 

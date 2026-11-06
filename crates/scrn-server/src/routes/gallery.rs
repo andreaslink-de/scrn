@@ -72,6 +72,8 @@ struct Card {
     expired: bool,
     /// Only for public, unexpired screenshots.
     short_url: Option<String>,
+    /// Openings of the short link; shown with the short URL.
+    views: i64,
 }
 
 impl Card {
@@ -88,6 +90,7 @@ impl Card {
             public: shot.public.is_some(),
             expired,
             short_url: short_url(state, shot).filter(|_| !expired),
+            views: shot.views,
         }
     }
 }
@@ -186,6 +189,7 @@ struct ShotPage {
     expired: bool,
     short_url: Option<String>,
     expires_at: Option<i64>,
+    views: i64,
     expiry: String,
     custom_date: String,
     min_date: String,
@@ -240,6 +244,7 @@ fn render_detail(
             expired,
             short_url: short_url(state, shot).filter(|_| !expired),
             expires_at,
+            views: shot.views,
             expiry,
             custom_date,
             min_date: html::format_date(now),

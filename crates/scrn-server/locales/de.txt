@@ -190,3 +190,4 @@ admin.backup = Backup
 admin.backup.hint = Lädt ein tar-Archiv mit einer konsistenten Kopie der Datenbank und aller Screenshots herunter, erstellt im laufenden Betrieb. Auf dem Server wird nichts gespeichert. Zum Wiederherstellen siehe „Backup and restore“ in der README.
 admin.backup.download = Backup herunterladen
 error.backup_running = Es läuft bereits ein Backup-Download. Bitte warte, bis er fertig ist.
+shot.views = Aufrufe

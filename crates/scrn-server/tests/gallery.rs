@@ -389,3 +389,44 @@ async fn delete_removes_row_and_files() {
         StatusCode::NOT_FOUND
     );
 }
+
+#[tokio::test]
+async fn views_are_shown_for_public_links() {
+    let mut s = setup().await;
+    let public = shot(&mut s.api, "?visibility=public").await;
+    let private = shot(&mut s.api, "").await;
+    let mut visitor = s.server.client("203.0.113.1");
+    let link = short_path(public.short_url.as_deref().unwrap());
+    for _ in 0..2 {
+        assert_eq!(visitor.get(&link).await.status, StatusCode::OK);
+    }
+
+    let gallery = s.browser.get("/app").await.body;
+    assert!(gallery.contains(r#"title="Aufrufe: 2""#), "{gallery}");
+    assert_eq!(gallery.matches(r#"class="views""#).count(), 1);
+    let detail = s
+        .browser
+        .get(&format!("/app/shots/{}", public.id))
+        .await
+        .body;
+    assert!(detail.contains("<dt>Aufrufe</dt><dd>2</dd>"));
+    let detail = s
+        .browser
+        .get(&format!("/app/shots/{}", private.id))
+        .await
+        .body;
+    assert!(!detail.contains("Aufrufe"));
+
+    // Making it private and public again starts a new link from zero.
+    let page = format!("/app/shots/{}", public.id);
+    let action = format!("{page}/visibility");
+    s.browser
+        .submit(&page, &action, &[("visibility", "private")])
+        .await;
+    s.browser
+        .submit(&page, &action, &[("visibility", "public")])
+        .await;
+    assert_eq!(stored(&s, &public.id).await.views, 0);
+    let detail = s.browser.get(&page).await.body;
+    assert!(detail.contains("<dt>Aufrufe</dt><dd>0</dd>"));
+}
