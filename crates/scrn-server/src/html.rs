@@ -27,7 +27,7 @@ use crate::repo::users::Language;
 /// Policy for HTML pages: only our own scripts, styles and images, no
 /// framing, forms only to this origin.
 pub const PAGE_CSP: &str = "default-src 'none'; script-src 'self'; style-src 'self'; \
-     img-src 'self' data:; connect-src 'self'; form-action 'self'; \
+     img-src 'self' data:; connect-src 'self'; manifest-src 'self'; form-action 'self'; \
      frame-ancestors 'none'; base-uri 'none'";
 
 /// Navigation of logged-in pages.
@@ -268,6 +268,36 @@ const ASSETS: &[Asset] = &[
         content_type: "image/svg+xml",
         data: include_bytes!("../static/favicon.svg"),
     },
+    Asset {
+        name: "favicon.ico",
+        content_type: "image/x-icon",
+        data: include_bytes!("../static/favicon.ico"),
+    },
+    Asset {
+        name: "apple-touch-icon.png",
+        content_type: "image/png",
+        data: include_bytes!("../static/apple-touch-icon.png"),
+    },
+    Asset {
+        name: "icon-512.png",
+        content_type: "image/png",
+        data: include_bytes!("../static/icon-512.png"),
+    },
+    Asset {
+        name: "logo-dark.svg",
+        content_type: "image/svg+xml",
+        data: include_bytes!("../static/logo-dark.svg"),
+    },
+    Asset {
+        name: "logo-light.svg",
+        content_type: "image/svg+xml",
+        data: include_bytes!("../static/logo-light.svg"),
+    },
+    Asset {
+        name: "manifest.webmanifest",
+        content_type: "application/manifest+json",
+        data: include_bytes!("../static/manifest.webmanifest"),
+    },
 ];
 
 /// Short content hashes, used as cache-busting versions.
@@ -313,6 +343,23 @@ pub async fn serve_static(Path(file): Path<String>, Query(query): Query<AssetQue
     let headers = response.headers_mut();
     headers.insert(CONTENT_TYPE, HeaderValue::from_static(asset.content_type));
     headers.insert(CACHE_CONTROL, HeaderValue::from_static(cache));
+    headers.insert(X_CONTENT_TYPE_OPTIONS, HeaderValue::from_static("nosniff"));
+    response
+}
+
+/// `/favicon.ico`, which browsers ask for on their own, e.g. next to a
+/// public image.
+pub async fn favicon() -> Response {
+    let Some((asset, _)) = find_asset("favicon.ico") else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let mut response = asset.data.into_response();
+    let headers = response.headers_mut();
+    headers.insert(CONTENT_TYPE, HeaderValue::from_static(asset.content_type));
+    headers.insert(
+        CACHE_CONTROL,
+        HeaderValue::from_static("public, max-age=86400"),
+    );
     headers.insert(X_CONTENT_TYPE_OPTIONS, HeaderValue::from_static("nosniff"));
     response
 }

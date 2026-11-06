@@ -388,6 +388,37 @@ async fn admin_sets_quotas_and_sees_usage() {
 }
 
 #[tokio::test]
+async fn favicon_ico_is_served_at_the_root() {
+    let server = TestServer::new().await;
+    let mut browser = server.client("192.0.2.1");
+    let response = browser.get("/favicon.ico").await;
+    assert_eq!(response.status, StatusCode::OK);
+    assert_eq!(response.headers["content-type"], "image/x-icon");
+    assert_eq!(response.headers["x-content-type-options"], "nosniff");
+}
+
+#[tokio::test]
+async fn pages_link_the_icons_and_the_logo_of_the_theme() {
+    let server = TestServer::new().await;
+    let mut browser = server.client("192.0.2.1");
+    let body = browser.get("/login").await.body;
+    for name in [
+        "favicon.ico",
+        "favicon.svg",
+        "apple-touch-icon.png",
+        "manifest.webmanifest",
+        "logo-dark.svg",
+    ] {
+        assert!(body.contains(&asset_url(name)), "{name}");
+    }
+    assert!(!body.contains("logo-light.svg"));
+    browser.cookies.insert("scrn_theme".into(), "light".into());
+    let body = browser.get("/login").await.body;
+    assert!(body.contains(&asset_url("logo-light.svg")));
+    assert!(!body.contains("logo-dark.svg"));
+}
+
+#[tokio::test]
 async fn static_assets_are_served_with_cache_headers() {
     let server = TestServer::new().await;
     let mut browser = server.client("192.0.2.1");
@@ -395,6 +426,12 @@ async fn static_assets_are_served_with_cache_headers() {
         ("app.css", "text/css; charset=utf-8"),
         ("htmx.min.js", "text/javascript; charset=utf-8"),
         ("favicon.svg", "image/svg+xml"),
+        ("favicon.ico", "image/x-icon"),
+        ("apple-touch-icon.png", "image/png"),
+        ("icon-512.png", "image/png"),
+        ("logo-dark.svg", "image/svg+xml"),
+        ("logo-light.svg", "image/svg+xml"),
+        ("manifest.webmanifest", "application/manifest+json"),
     ] {
         let response = browser.get(&asset_url(name)).await;
         assert_eq!(response.status, StatusCode::OK, "{name}");

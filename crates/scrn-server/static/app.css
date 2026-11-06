@@ -99,6 +99,9 @@ a {
 }
 
 .brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
   font-weight: 700;
   font-size: 1.15rem;
   letter-spacing: 0.08em;
