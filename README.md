@@ -114,6 +114,11 @@ A public screenshot is served at `<SCRN_BASE_URL>/<short_id>` (also with
 Browsers may cache an image for at most five minutes (never beyond the link's
 expiry), and each client IP may fetch 300 links per minute.
 
+Expired links stop working immediately. A maintenance job runs at startup
+and every five minutes: it turns expired public screenshots into private
+ones (they stay in the gallery), deletes expired sessions and removes image
+files without a database entry once they are an hour old.
+
 Each user has a storage quota (`SCRN_DEFAULT_QUOTA_MB` unless set per user,
 0 means unlimited). Uploads beyond it fail with 413 and the code
 `quota_exceeded`; lowering a quota never deletes anything.

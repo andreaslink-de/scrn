@@ -13,6 +13,7 @@ pub mod healthcheck;
 pub mod html;
 pub mod i18n;
 pub mod image;
+pub mod jobs;
 pub mod net;
 pub mod prefs;
 pub mod rate_limit;
@@ -225,7 +226,10 @@ pub async fn run(config: Config) -> Result<(), ServerError> {
         trusted_proxies = state.config.trusted_proxies.nets().len(),
         "scrn-server listening"
     );
-    serve(listener, state, shutdown_signal()).await?;
+    let maintenance = jobs::spawn(state.clone());
+    let result = serve(listener, state, shutdown_signal()).await;
+    maintenance.abort();
+    result?;
     tracing::info!("scrn-server stopped");
     Ok(())
 }
