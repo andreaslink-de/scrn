@@ -6,6 +6,7 @@ mod health;
 mod home;
 mod invite;
 mod login;
+mod passkeys;
 mod prefs;
 mod public;
 mod settings;
@@ -42,6 +43,18 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/app/tokens/{id}/revoke", post(settings::revoke_token))
         .route("/prefs", post(prefs::switch))
+        .route("/login/passkey/start", post(passkeys::login_start))
+        .route("/login/passkey/finish", post(passkeys::login_finish))
+        .route(
+            "/app/passkeys/register/start",
+            post(passkeys::register_start),
+        )
+        .route(
+            "/app/passkeys/register/finish",
+            post(passkeys::register_finish),
+        )
+        .route("/app/passkeys/{id}/rename", post(passkeys::rename))
+        .route("/app/passkeys/{id}/delete", post(passkeys::delete))
         .route("/static/{file}", get(crate::html::serve_static))
         .route("/setup", get(setup::show).post(setup::submit))
         .route("/login", get(login::show).post(login::submit))

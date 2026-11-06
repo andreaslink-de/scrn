@@ -43,6 +43,50 @@
 {% include "usage.html" %}
 </section>
 
+<section class="card" id="passkeys" aria-labelledby="passkeys-title">
+<h2 id="passkeys-title">{{ page.t("passkey.title") }}</h2>
+{% if passkey_added %}<p class="notice" role="status">{{ page.t("passkey.added") }}</p>{% endif %}
+{% if let Some(error) = passkey_error %}<p class="alert" role="alert">{{ error }}</p>{% endif %}
+{% if passkeys_enabled %}
+<p class="muted">{{ page.t("passkey.intro") }}</p>
+<form class="inline-form" data-passkey-register data-csrf="{{ csrf }}" data-unsupported="{{ page.t("passkey.unsupported") }}" data-cancelled="{{ page.t("passkey.cancelled") }}">
+<div class="field">
+<label for="passkey-name">{{ page.t("passkey.name") }}</label>
+<input id="passkey-name" name="name" type="text" maxlength="100" autocomplete="off" required>
+</div>
+<button type="submit">{{ page.t("passkey.add") }}</button>
+</form>
+<p class="alert" role="alert" data-passkey-message hidden></p>
+<noscript><p class="muted">{{ page.t("passkey.needs_js") }}</p></noscript>
+{% else %}
+<p class="muted">{{ page.t("passkey.disabled") }}</p>
+{% endif %}
+{% if !passkeys.is_empty() %}
+<div class="table-wrap">
+<table class="stack">
+<thead><tr><th scope="col">{{ page.t("tokens.col.name") }}</th><th scope="col">{{ page.t("admin.col.created") }}</th><th scope="col">{{ page.t("tokens.col.last_used") }}</th><th scope="col">{{ page.t("admin.col.actions") }}</th></tr></thead>
+<tbody>
+{% for passkey in passkeys %}
+<tr>
+<td data-label="{{ page.t("tokens.col.name") }}">
+<form class="inline-form" method="post" action="/app/passkeys/{{ passkey.id }}/rename">
+<input type="hidden" name="csrf" value="{{ csrf }}">
+<label for="passkey-{{ passkey.id }}" class="visually-hidden">{{ page.t("passkey.name") }}</label>
+<input id="passkey-{{ passkey.id }}" name="name" type="text" class="short" maxlength="100" value="{{ passkey.name }}" required>
+<button type="submit" class="secondary small">{{ page.t("passkey.rename") }}</button>
+</form>
+</td>
+<td data-label="{{ page.t("admin.col.created") }}">{{ page.time(passkey.created_at) }}</td>
+<td data-label="{{ page.t("tokens.col.last_used") }}">{% match passkey.last_used_at %}{% when Some(at) %}{{ page.time(at) }}{% when None %}{{ page.t("tokens.never") }}{% endmatch %}</td>
+<td data-label="{{ page.t("admin.col.actions") }}"><form method="post" action="/app/passkeys/{{ passkey.id }}/delete"><input type="hidden" name="csrf" value="{{ csrf }}"><button type="submit" class="danger small">{{ page.t("passkey.delete") }}</button></form></td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+{% endif %}
+</section>
+
 <section class="card" id="tokens" aria-labelledby="tokens-title">
 <h2 id="tokens-title">{{ page.t("tokens.title") }}</h2>
 <p class="muted">{{ page.t("tokens.intro") }}</p>

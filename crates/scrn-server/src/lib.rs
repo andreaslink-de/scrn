@@ -15,6 +15,7 @@ pub mod i18n;
 pub mod image;
 pub mod jobs;
 pub mod net;
+pub mod passkey;
 pub mod prefs;
 pub mod rate_limit;
 pub mod repo;
@@ -64,6 +65,8 @@ pub struct AppState {
     /// Limits how many uploads are decoded at the same time, which bounds
     /// memory use (a 100-megapixel image needs about 400 MiB).
     pub image_permits: Arc<tokio::sync::Semaphore>,
+    /// Passkey support; `None` if the base URL has no domain name.
+    pub passkeys: Option<Arc<passkey::Passkeys>>,
 }
 
 impl AppState {
@@ -147,6 +150,13 @@ pub async fn init_state_with_clock(
         })?;
     }
     let db = db::connect(&config.database_path()).await?;
+    let passkeys = passkey::build(&config.base_url).map(|w| Arc::new(passkey::Passkeys::new(w)));
+    if passkeys.is_none() {
+        tracing::warn!(
+            base_url = %config.base_url,
+            "passkeys are disabled: SCRN_BASE_URL needs a host name, not an IP address"
+        );
+    }
     let dummy = crypto::SecretToken::generate()?.token;
     let dummy_password_hash: Arc<str> =
         tokio::task::spawn_blocking(move || crypto::hash_password(&dummy))
@@ -166,6 +176,7 @@ pub async fn init_state_with_clock(
         )),
         dummy_password_hash,
         image_permits: Arc::new(tokio::sync::Semaphore::new(IMAGE_WORKERS)),
+        passkeys,
     })
 }
 
