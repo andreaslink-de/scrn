@@ -18,7 +18,7 @@ canvas {
 /* Everything outside the selection is dimmed by the huge box shadow. */
 #selection {
   position: fixed;
-  border: 1px solid #7aa2ff;
+  border: 1px solid #34e58c;
   box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.45);
   pointer-events: none;
 }

@@ -23,8 +23,9 @@ image is uploaded to your own server and can be shared through a short link.
   Docker, stores screenshots, serves public short links and provides a web gallery.
 - **Shared types** (`crates/scrn-proto`): API request and response types used by
   the server and the client.
-- **Desktop client** (`client/`, planned): a Tauri app with a tray icon, area
-  selection, an annotation editor and upload via API token.
+- **Desktop client** (`client/`, in development, Linux first): a Tauri app with a
+  tray icon, area selection, an annotation editor and upload via API token. See
+  [client/README.md](client/README.md).
 
 Screenshots are private by default. Only public screenshots get a short link, and
 public links can expire.
