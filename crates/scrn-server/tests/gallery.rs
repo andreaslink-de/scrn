@@ -72,18 +72,13 @@ async fn gallery_shows_cards_with_links_only_for_public_images() {
     assert_eq!(page.status, StatusCode::OK);
     // Newest first.
     assert!(page.body.find(&public.id).unwrap() < page.body.find(&private.id).unwrap());
-    // The public card has its link with a copy button, the private one none.
-    assert!(page.body.contains(&format!(r#"value="{url}""#)));
-    assert!(
-        page.body
-            .contains(&format!(r#"data-copy="url-{}""#, public.id))
-    );
-    assert!(
-        !page
-            .body
-            .contains(&format!(r#"data-copy="url-{}""#, private.id))
-    );
-    assert_eq!(page.body.matches("data-copy=").count(), 1);
+    // The public card shows only the short ID, links it and copies the
+    // whole URL; the private card has no link.
+    let code = url.rsplit('/').next().unwrap();
+    assert!(page.body.contains(&format!(r#"href="{url}""#)));
+    assert!(page.body.contains(&format!(">{code}</a>")));
+    assert!(page.body.contains(&format!(r#"data-copy-text="{url}""#)));
+    assert_eq!(page.body.matches("data-copy-text=").count(), 1);
     // Thumbnails are lazy loaded and come from the owner-only route.
     assert!(page.body.contains(&format!(
         r#"src="/app/shots/{}/thumb" loading="lazy""#,

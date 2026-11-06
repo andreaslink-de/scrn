@@ -12,7 +12,10 @@
 </span>
 <time datetime="{{ page.iso(card.created_at) }}">{{ page.time(card.created_at) }}</time>
 </div>
-{% if let Some(url) = card.short_url %}{% let input_id = format!("url-{}", card.id) %}{% include "copy_link.html" %}{% endif %}
+{% if let Some(url) = card.short_url %}<div class="copy-row">
+<a class="short-code" href="{{ url }}" title="{{ url }}" rel="noopener noreferrer" target="_blank" aria-label="{{ page.t("shot.short_url") }}: {{ url }}">{{ card.short_code() }}</a>
+<button type="button" class="secondary small" data-copy-text="{{ url }}" data-copied="{{ page.t("copy.done") }}" data-failed="{{ page.t("copy.failed") }}" aria-live="polite">{{ page.t("copy.button") }}</button>
+</div>{% endif %}
 </li>
 {% endfor %}
 {% if let Some(next) = next %}

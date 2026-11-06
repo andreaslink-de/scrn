@@ -158,6 +158,7 @@ expiry.date = Bestimmtes Datum
 copy.button = Kopieren
 copy.done = Kopiert
 copy.manual = Markiert, mit Strg+C kopieren
+copy.failed = Kopieren nicht möglich
 error.expiry_date = Das Datum muss in der Zukunft liegen und höchstens 3650 Tage entfernt sein.
 error.expiry_private = Nur öffentliche Screenshots haben einen Ablauf.
 
