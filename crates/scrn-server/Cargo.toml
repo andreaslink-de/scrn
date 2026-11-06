@@ -10,6 +10,7 @@ publish.workspace = true
 
 [dependencies]
 argon2 = "0.6.0"
+askama = { version = "0.16.1", default-features = false, features = ["derive", "std"] }
 axum = { version = "0.8.9", default-features = false, features = ["http1", "tokio", "query", "json", "form"] }
 getrandom = "0.4.3"
 png = "0.18.1"

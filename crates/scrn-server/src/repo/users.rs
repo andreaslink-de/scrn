@@ -166,6 +166,26 @@ pub async fn set_disabled(
     Ok(result.rows_affected() == 1)
 }
 
+/// Stores the UI preferences of a user.
+pub async fn set_preferences(
+    db: impl SqliteExecutor<'_>,
+    id: i64,
+    language: Language,
+    theme: Theme,
+    default_expiry_days: i64,
+) -> Result<bool, RepoError> {
+    let result = sqlx::query(
+        "UPDATE users SET language = ?, theme = ?, default_expiry_days = ? WHERE id = ?",
+    )
+    .bind(language)
+    .bind(theme)
+    .bind(default_expiry_days)
+    .bind(id)
+    .execute(db)
+    .await?;
+    Ok(result.rows_affected() == 1)
+}
+
 /// Sets the storage quota of a user: `None` for the server default,
 /// `Some(0)` for unlimited. Existing screenshots are never touched; a quota
 /// below the current usage only blocks new uploads. Returns false if the
@@ -197,6 +217,25 @@ pub async fn delete(db: impl SqliteExecutor<'_>, id: i64) -> Result<bool, RepoEr
 mod tests {
     use super::*;
     use crate::repo::test_util;
+
+    #[tokio::test]
+    async fn preferences_are_stored() {
+        let (_dir, pool) = test_util::pool().await;
+        let user = test_util::user(&pool, "alice").await;
+        assert_eq!((user.language, user.theme), (Language::De, Theme::Dark));
+        assert!(
+            set_preferences(&pool, user.id, Language::En, Theme::Light, 7)
+                .await
+                .unwrap()
+        );
+        let user = get_by_id(&pool, user.id).await.unwrap().unwrap();
+        assert_eq!((user.language, user.theme), (Language::En, Theme::Light));
+        assert_eq!(user.default_expiry_days, 7);
+        assert!(matches!(
+            set_preferences(&pool, user.id, Language::En, Theme::Light, -1).await,
+            Err(RepoError::Db(_))
+        ));
+    }
 
     #[tokio::test]
     async fn quota_can_be_set_and_resolves_against_the_default() {

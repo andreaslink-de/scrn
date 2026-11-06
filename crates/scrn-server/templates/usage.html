@@ -1,0 +1,9 @@
+<div class="usage">
+{% match usage.quota %}
+{% when Some(quota) %}
+<progress max="100" value="{{ usage.percent }}" aria-label="{{ page.t("storage.label") }}">{{ usage.percent }} %</progress>
+<span>{{ page.tf2("storage.used_of", "used", page.bytes(usage.used).as_str(), "quota", page.bytes(quota).as_str()) }}</span>
+{% when None %}
+<span>{{ page.tf("storage.used_unlimited", "used", page.bytes(usage.used).as_str()) }}</span>
+{% endmatch %}
+</div>

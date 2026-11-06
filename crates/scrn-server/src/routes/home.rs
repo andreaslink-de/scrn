@@ -1,6 +1,7 @@
 //! Start page redirect and the page after login. The gallery replaces the
 //! latter in step S7b.
 
+use askama::Template;
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Redirect, Response};
@@ -8,7 +9,7 @@ use axum::response::{IntoResponse, Redirect, Response};
 use crate::AppState;
 use crate::auth::CurrentUser;
 use crate::error::AppError;
-use crate::html::{self, Ctx, Nav};
+use crate::html::{self, Page};
 use crate::repo::users;
 
 /// `/`: setup on first start, otherwise the app or the login page.
@@ -26,18 +27,20 @@ pub async fn root(
     Ok(Redirect::to(target).into_response())
 }
 
-pub async fn app(user: CurrentUser) -> Response {
-    let ctx = Ctx::new(user.user.language);
-    let body = format!(
-        "<p>{}</p>",
-        ctx.tf("home.signed_in_as", &[("username", &user.user.username)])
-    );
-    let nav = Nav {
-        is_admin: user.is_admin(),
-        csrf: &user.csrf,
-    };
-    html::response(
+#[derive(Template)]
+#[template(path = "home.html")]
+struct HomePage<'a> {
+    page: Page,
+    username: &'a str,
+}
+
+pub async fn app(user: CurrentUser) -> Result<Response, AppError> {
+    let page = Page::user(&user, "home.title", "/app");
+    html::render(
         StatusCode::OK,
-        html::page(&ctx, "home.title", Some(&nav), &body),
+        &HomePage {
+            page,
+            username: &user.user.username,
+        },
     )
 }

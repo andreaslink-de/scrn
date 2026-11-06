@@ -282,6 +282,19 @@ pub async fn usage_for_user(db: impl SqliteExecutor<'_>, user_id: i64) -> Result
     Ok(used)
 }
 
+/// Storage used per user, for the admin page. Users without screenshots
+/// are missing from the map.
+pub async fn usage_by_user(
+    db: impl SqliteExecutor<'_>,
+) -> Result<std::collections::HashMap<i64, i64>, RepoError> {
+    let rows: Vec<(i64, i64)> = sqlx::query_as(
+        "SELECT user_id, SUM(bytes + thumb_bytes) FROM screenshots GROUP BY user_id",
+    )
+    .fetch_all(db)
+    .await?;
+    Ok(rows.into_iter().collect())
+}
+
 fn split_link(link: Option<&PublicLink>) -> (Visibility, Option<&str>, Option<i64>) {
     match link {
         Some(link) => (
@@ -328,6 +341,9 @@ mod tests {
         insert(&pool, &new(alice.id, None), 100).await.unwrap();
         insert(&pool, &new(bob.id, None), 100).await.unwrap();
         assert_eq!(usage_for_user(&pool, alice.id).await.unwrap(), 2200);
+        let all = usage_by_user(&pool).await.unwrap();
+        assert_eq!(all.get(&alice.id), Some(&2200));
+        assert_eq!(all.get(&bob.id), Some(&1100));
         delete_for_user(&pool, shot.id, alice.id).await.unwrap();
         assert_eq!(usage_for_user(&pool, alice.id).await.unwrap(), 1100);
     }

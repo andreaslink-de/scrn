@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block content %}
+{% if saved %}<p class="notice" role="status">{{ page.t("settings.saved") }}</p>{% endif %}
+
+<section class="card" aria-labelledby="prefs-title">
+<h2 id="prefs-title">{{ page.t("settings.prefs") }}</h2>
+{% if let Some(error) = error %}<p class="alert" role="alert">{{ error }}</p>{% endif %}
+<form method="post" action="/app/settings">
+<input type="hidden" name="csrf" value="{{ csrf }}">
+<div class="field">
+<label for="lang">{{ page.t("settings.language") }}</label>
+<select id="lang" name="lang" class="short">
+<option value="de"{% if page.lang_code() == "de" %} selected{% endif %}>{{ page.t("lang.de") }}</option>
+<option value="en"{% if page.lang_code() == "en" %} selected{% endif %}>{{ page.t("lang.en") }}</option>
+</select>
+</div>
+<fieldset>
+<legend>{{ page.t("settings.theme") }}</legend>
+<label class="choice"><input type="radio" name="theme" value="dark"{% if page.is_dark() %} checked{% endif %}> {{ page.t("theme.dark") }}</label>
+<label class="choice"><input type="radio" name="theme" value="light"{% if !page.is_dark() %} checked{% endif %}> {{ page.t("theme.light") }}</label>
+</fieldset>
+<div class="field">
+<label for="expiry">{{ page.t("settings.expiry") }}</label>
+<select id="expiry" name="expiry" class="short" aria-describedby="expiry-hint">
+<option value="0"{% if expiry == "0" %} selected{% endif %}>{{ page.t("expiry.never") }}</option>
+<option value="1"{% if expiry == "1" %} selected{% endif %}>{{ page.t("expiry.1") }}</option>
+<option value="7"{% if expiry == "7" %} selected{% endif %}>{{ page.t("expiry.7") }}</option>
+<option value="30"{% if expiry == "30" %} selected{% endif %}>{{ page.t("expiry.30") }}</option>
+<option value="custom"{% if expiry == "custom" %} selected{% endif %}>{{ page.t("expiry.custom") }}</option>
+</select>
+<small id="expiry-hint" class="hint">{{ page.t("settings.expiry_hint") }}</small>
+</div>
+<div class="field">
+<label for="custom_days">{{ page.t("settings.custom_days") }}</label>
+<input id="custom_days" name="custom_days" type="number" class="short" min="1" max="3650" value="{{ custom_days }}">
+</div>
+<button type="submit">{{ page.t("settings.save") }}</button>
+</form>
+</section>
+
+<section class="card" aria-labelledby="storage-title">
+<h2 id="storage-title">{{ page.t("storage.title") }}</h2>
+{% include "usage.html" %}
+</section>
+
+<section class="card" id="tokens" aria-labelledby="tokens-title">
+<h2 id="tokens-title">{{ page.t("tokens.title") }}</h2>
+<p class="muted">{{ page.t("tokens.intro") }}</p>
+{% if let Some(token) = new_token %}
+<div class="notice" role="status">
+<label for="new-token">{{ page.t("tokens.created") }}</label>
+<input id="new-token" type="text" readonly value="{{ token }}">
+</div>
+{% endif %}
+{% if let Some(error) = token_error %}<p class="alert" role="alert">{{ error }}</p>{% endif %}
+<form class="inline-form" method="post" action="/app/tokens">
+<input type="hidden" name="csrf" value="{{ csrf }}">
+<div class="field">
+<label for="token-name">{{ page.t("tokens.name") }}</label>
+<input id="token-name" name="name" type="text" maxlength="100" value="{{ token_name }}" autocomplete="off" required>
+</div>
+<button type="submit">{{ page.t("tokens.create") }}</button>
+</form>
+{% if tokens.is_empty() %}
+<p>{{ page.t("tokens.none") }}</p>
+{% else %}
+<div class="table-wrap">
+<table>
+<thead><tr><th scope="col">{{ page.t("tokens.col.name") }}</th><th scope="col">{{ page.t("admin.col.created") }}</th><th scope="col">{{ page.t("tokens.col.last_used") }}</th><th scope="col">{{ page.t("admin.col.status") }}</th><th scope="col">{{ page.t("admin.col.actions") }}</th></tr></thead>
+<tbody>
+{% for token in tokens %}
+<tr>
+<td>{{ token.name }}</td>
+<td>{{ page.time(token.created_at) }}</td>
+<td>{% match token.last_used_at %}{% when Some(at) %}{{ page.time(at) }}{% when None %}{{ page.t("tokens.never") }}{% endmatch %}</td>
+<td>{% if token.revoked_at.is_some() %}{{ page.t("status.revoked") }}{% else %}{{ page.t("status.active") }}{% endif %}</td>
+<td>{% if token.revoked_at.is_none() %}<form method="post" action="/app/tokens/{{ token.id }}/revoke"><input type="hidden" name="csrf" value="{{ csrf }}"><button type="submit" class="danger small">{{ page.t("tokens.revoke") }}</button></form>{% endif %}</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+{% endif %}
+</section>
+{% endblock %}

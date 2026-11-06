@@ -1,12 +1,19 @@
 //! Typed errors of request handlers and their HTTP responses.
+//!
+//! Handlers do not know the visitor's language when an error happens, so an
+//! error first becomes a bare response that carries the message key in an
+//! extension. The [`localize_errors`] middleware, which sees the request
+//! headers, then renders the page in the right language and theme.
 
+use axum::extract::Request;
 use axum::http::header::RETRY_AFTER;
 use axum::http::{HeaderValue, StatusCode};
+use axum::middleware::Next;
 use axum::response::{IntoResponse, Redirect, Response};
 
 use crate::crypto::CryptoError;
 use crate::html;
-use crate::i18n::DEFAULT_LANGUAGE;
+use crate::prefs::Prefs;
 use crate::repo::RepoError;
 
 /// Errors a handler can return. Messages shown to users come from the
@@ -25,6 +32,12 @@ pub enum AppError {
     TooManyRequests { retry_after: i64 },
     #[error("login required")]
     LoginRequired,
+    /// Any status with a specific catalog message.
+    #[error("{key}")]
+    Message {
+        status: StatusCode,
+        key: &'static str,
+    },
     #[error("internal error: {0}")]
     Internal(String),
 }
@@ -53,6 +66,10 @@ impl From<tokio::task::JoinError> for AppError {
     }
 }
 
+/// Marks a response as an error page still to be rendered.
+#[derive(Debug, Clone, Copy)]
+struct ErrorKey(&'static str);
+
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         let (status, key) = match &self {
@@ -61,22 +78,36 @@ impl IntoResponse for AppError {
             Self::Forbidden => (StatusCode::FORBIDDEN, "error.forbidden"),
             Self::BadRequest => (StatusCode::BAD_REQUEST, "error.bad_request"),
             Self::Csrf => (StatusCode::FORBIDDEN, "error.csrf"),
-            Self::TooManyRequests { retry_after } => {
-                let mut response = html::error_page(
-                    DEFAULT_LANGUAGE,
-                    StatusCode::TOO_MANY_REQUESTS,
-                    "error.too_many_requests",
-                );
-                if let Ok(value) = HeaderValue::from_str(&retry_after.to_string()) {
-                    response.headers_mut().insert(RETRY_AFTER, value);
-                }
-                return response;
+            Self::TooManyRequests { .. } => {
+                (StatusCode::TOO_MANY_REQUESTS, "error.too_many_requests")
             }
+            Self::Message { status, key } => (*status, *key),
             Self::Internal(detail) => {
                 tracing::error!(error = %detail, "request failed");
                 (StatusCode::INTERNAL_SERVER_ERROR, "error.internal")
             }
         };
-        html::error_page(DEFAULT_LANGUAGE, status, key)
+        let mut response = status.into_response();
+        response.extensions_mut().insert(ErrorKey(key));
+        if let Self::TooManyRequests { retry_after } = self
+            && let Ok(value) = HeaderValue::from_str(&retry_after.to_string())
+        {
+            response.headers_mut().insert(RETRY_AFTER, value);
+        }
+        response
     }
+}
+
+/// Middleware: renders error responses as translated pages.
+pub async fn localize_errors(request: Request, next: Next) -> Response {
+    let prefs = Prefs::from_headers(request.headers());
+    let response = next.run(request).await;
+    let Some(ErrorKey(key)) = response.extensions().get::<ErrorKey>().copied() else {
+        return response;
+    };
+    let mut page = html::error_page(prefs, response.status(), key);
+    if let Some(retry) = response.headers().get(RETRY_AFTER) {
+        page.headers_mut().insert(RETRY_AFTER, retry.clone());
+    }
+    page
 }

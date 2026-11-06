@@ -28,7 +28,7 @@ async fn setup_flow_creates_admin_once() {
     browser.get("/").await.assert_redirect("/setup");
     let page = browser.get("/setup").await;
     assert_eq!(page.status, StatusCode::OK);
-    assert!(page.body.contains(r#"<html lang="de">"#));
+    assert!(page.body.contains(r#"<html lang="de" data-theme="dark">"#));
 
     // Wrong setup token.
     let wrong = "0".repeat(64);

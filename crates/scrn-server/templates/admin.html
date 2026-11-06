@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block content %}
+{% if let Some(link) = invite_link %}
+<div class="notice" role="status">
+<label for="invite-link">{{ page.t("admin.invite.created") }}</label>
+<input id="invite-link" type="text" readonly value="{{ link }}">
+</div>
+{% endif %}
+{% if let Some(error) = error %}<p class="alert" role="alert">{{ error }}</p>{% endif %}
+
+<section class="card" aria-labelledby="users-title">
+<h2 id="users-title">{{ page.t("admin.users") }}</h2>
+<p class="muted">{{ page.tf("admin.quota.hint", "default", default_quota.as_str()) }}</p>
+<div class="table-wrap">
+<table>
+<thead><tr><th scope="col">{{ page.t("admin.col.username") }}</th><th scope="col">{{ page.t("admin.col.role") }}</th><th scope="col">{{ page.t("admin.col.status") }}</th><th scope="col">{{ page.t("admin.col.storage") }}</th><th scope="col">{{ page.t("admin.col.quota") }}</th><th scope="col">{{ page.t("admin.col.actions") }}</th></tr></thead>
+<tbody>
+{% for user in users %}
+<tr>
+<td>{{ user.username }}{% if user.is_self %} <span class="badge">{{ page.t("admin.you") }}</span>{% endif %}</td>
+<td>{{ page.t(user.role_key) }}</td>
+<td>{% if user.disabled %}{{ page.t("status.disabled") }}{% else %}{{ page.t("status.active") }}{% endif %}</td>
+<td>{% let usage = user.usage %}{% include "usage.html" %}</td>
+<td>
+<form class="inline-form" method="post" action="/admin/users/{{ user.id }}/quota">
+<input type="hidden" name="csrf" value="{{ csrf }}">
+<div class="field">
+<label for="quota-{{ user.id }}" class="visually-hidden">{{ page.tf("admin.quota.label", "username", user.username.as_str()) }}</label>
+<input id="quota-{{ user.id }}" name="quota_mb" type="text" inputmode="numeric" class="short" value="{{ user.quota_mb }}" placeholder="{{ page.t("admin.quota.default") }}">
+</div>
+<button type="submit" class="secondary small">{{ page.t("admin.quota.save") }}</button>
+</form>
+</td>
+<td>{% if !user.is_self %}
+<form method="post" action="/admin/users/{{ user.id }}/{% if user.disabled %}enable{% else %}disable{% endif %}">
+<input type="hidden" name="csrf" value="{{ csrf }}">
+<button type="submit" class="{% if user.disabled %}secondary{% else %}danger{% endif %} small">{% if user.disabled %}{{ page.t("admin.enable") }}{% else %}{{ page.t("admin.disable") }}{% endif %}</button>
+</form>
+{% endif %}</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+</section>
+
+<section class="card" aria-labelledby="invites-title">
+<h2 id="invites-title">{{ page.t("admin.invites") }}</h2>
+<form class="inline-form" method="post" action="/admin/invites">
+<input type="hidden" name="csrf" value="{{ csrf }}">
+<div class="field">
+<label for="days">{{ page.t("admin.invite.days") }}</label>
+<input id="days" name="days" type="number" class="short" min="1" max="30" value="{{ default_days }}" required>
+</div>
+<button type="submit">{{ page.t("admin.invite.create") }}</button>
+</form>
+{% if invites.is_empty() %}
+<p>{{ page.t("admin.invite.none") }}</p>
+{% else %}
+<div class="table-wrap">
+<table>
+<thead><tr><th scope="col">{{ page.t("admin.col.created") }}</th><th scope="col">{{ page.t("admin.col.expires") }}</th><th scope="col">{{ page.t("admin.col.status") }}</th><th scope="col">{{ page.t("admin.col.actions") }}</th></tr></thead>
+<tbody>
+{% for invite in invites %}
+<tr>
+<td>{{ page.time(invite.created_at) }}</td>
+<td>{{ page.time(invite.expires_at) }}</td>
+<td>{{ page.t(invite.status_key) }}{% if let Some(name) = invite.used_by %}: {{ name }}{% endif %}</td>
+<td>{% if invite.open %}<form method="post" action="/admin/invites/{{ invite.id }}/delete"><input type="hidden" name="csrf" value="{{ csrf }}"><button type="submit" class="danger small">{{ page.t("admin.invite.revoke") }}</button></form>{% endif %}</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+{% endif %}
+</section>
+{% endblock %}

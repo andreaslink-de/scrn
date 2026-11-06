@@ -3,7 +3,6 @@
 app.name = SCRN
 
 nav.home = Overview
-nav.tokens = API tokens
 nav.admin = Administration
 nav.logout = Sign out
 
@@ -86,3 +85,41 @@ error.invite_invalid = This invitation is invalid, has expired or has already be
 error.invite_days = The validity must be between 1 and 30 days.
 error.cannot_disable_self = You cannot disable your own account.
 error.token_name = The name must be between 1 and 100 characters long.
+
+# UI foundation (S7a)
+nav.skip = Skip to content
+nav.label = Main navigation
+nav.settings = Settings
+lang.de = Deutsch
+lang.en = English
+theme.dark = Dark
+theme.light = Light
+prefs.apply = Apply
+home.gallery_soon = The gallery of your screenshots will appear here soon.
+settings.title = Settings
+settings.prefs = Appearance and language
+settings.language = Language
+settings.theme = Theme
+settings.expiry = Default expiry of public links
+settings.expiry_hint = Applies to new public uploads unless the client asks for something else.
+settings.custom_days = Custom duration in days (for “Custom”)
+settings.save = Save
+settings.saved = Settings saved.
+expiry.never = Never
+expiry.1 = 1 day
+expiry.7 = 7 days
+expiry.30 = 30 days
+expiry.custom = Custom
+storage.title = Storage
+storage.label = Storage used
+storage.used_of = {used} of {quota} used
+storage.used_unlimited = {used} used, no limit
+storage.unlimited = unlimited
+admin.col.storage = Storage
+admin.col.quota = Quota (MiB)
+admin.quota.hint = Quota in MiB: empty means the server default ({default}), 0 means unlimited. Changes apply immediately and never delete anything.
+admin.quota.label = Quota of {username} in MiB
+admin.quota.default = Default
+admin.quota.save = Set
+error.expiry_days = The custom duration must be between 1 and 3650 days.
+error.quota_invalid = The quota must be empty or a whole number of at least 0.

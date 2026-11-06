@@ -1,5 +1,6 @@
 //! Registration through a single-use invitation link.
 
+use askama::Template;
 use axum::Form;
 use axum::extract::{Path, State};
 use axum::http::header::SET_COOKIE;
@@ -12,9 +13,21 @@ use crate::AppState;
 use crate::auth::{self, MIN_PASSWORD_CHARS};
 use crate::crypto;
 use crate::error::AppError;
-use crate::html::{self, Ctx, Field, csrf_field};
-use crate::i18n::DEFAULT_LANGUAGE;
+use crate::html::{self, Page};
+use crate::i18n;
+use crate::prefs::Prefs;
 use crate::repo::users::{NewUser, Role};
+
+#[derive(Template)]
+#[template(path = "invite.html")]
+struct InvitePage<'a> {
+    page: Page,
+    token: &'a str,
+    csrf: String,
+    username: &'a str,
+    min_password: usize,
+    error: Option<String>,
+}
 use crate::repo::{RepoError, invites, users};
 
 #[derive(Deserialize)]
@@ -26,33 +39,32 @@ pub struct RegisterForm {
 }
 
 /// The same page for unknown, expired and used invitations.
-fn invalid_invite() -> Response {
-    html::error_page(
-        DEFAULT_LANGUAGE,
-        StatusCode::NOT_FOUND,
-        "error.invite_invalid",
-    )
+fn invalid_invite() -> Result<Response, AppError> {
+    Err(AppError::Message {
+        status: StatusCode::NOT_FOUND,
+        key: "error.invite_invalid",
+    })
 }
 
 pub async fn show(
     State(state): State<AppState>,
     Path(token): Path<String>,
+    prefs: Prefs,
     headers: HeaderMap,
 ) -> Result<Response, AppError> {
     let Some(hash) = crypto::hash_hex_token(&token) else {
-        return Ok(invalid_invite());
+        return invalid_invite();
     };
     let now = state.clock.now();
     if invites::get_usable_by_token_hash(&state.db, &hash, now)
         .await?
         .is_none()
     {
-        return Ok(invalid_invite());
+        return invalid_invite();
     }
     let (csrf, cookie) = auth::form_csrf(&headers, &state)?;
-    let ctx = Ctx::new(DEFAULT_LANGUAGE);
     Ok(with_cookie(
-        render(&ctx, &token, &csrf, "", None, StatusCode::OK),
+        render(prefs, &token, csrf, "", None, StatusCode::OK)?,
         cookie,
     ))
 }
@@ -60,14 +72,14 @@ pub async fn show(
 pub async fn submit(
     State(state): State<AppState>,
     Path(token): Path<String>,
+    prefs: Prefs,
     headers: HeaderMap,
     Form(form): Form<RegisterForm>,
 ) -> Result<Response, AppError> {
     auth::verify_form_csrf(&headers, &state, &form.csrf)?;
     let Some(hash) = crypto::hash_hex_token(&token) else {
-        return Ok(invalid_invite());
+        return invalid_invite();
     };
-    let ctx = Ctx::new(DEFAULT_LANGUAGE);
     let username = form.username.trim();
     let now = state.clock.now();
 
@@ -76,20 +88,19 @@ pub async fn submit(
         .await?
         .is_none()
     {
-        return Ok(invalid_invite());
+        return invalid_invite();
     }
     if let Err(err) = auth::validate_username(username)
         .and_then(|()| auth::validate_new_password(&form.password, &form.password_confirm))
     {
-        let message = err.message(&ctx);
-        return Ok(render(
-            &ctx,
+        return render(
+            prefs,
             &token,
-            &form.csrf,
+            form.csrf,
             username,
-            Some(&message),
+            Some(err.message(prefs.lang)),
             StatusCode::UNPROCESSABLE_ENTITY,
-        ));
+        );
     }
     let password_hash = auth::hash_password(form.password).await?;
 
@@ -99,7 +110,7 @@ pub async fn submit(
     let now = state.clock.now();
     let mut tx = state.db.begin_with("BEGIN IMMEDIATE").await?;
     let Some(invite) = invites::get_usable_by_token_hash(&mut *tx, &hash, now).await? else {
-        return Ok(invalid_invite());
+        return invalid_invite();
     };
     let created = users::create(
         &mut *tx,
@@ -114,21 +125,23 @@ pub async fn submit(
     let user = match created {
         Ok(user) => user,
         Err(RepoError::Conflict) => {
-            let message = ctx.t("error.username_taken");
-            return Ok(render(
-                &ctx,
+            let message = i18n::catalogs().t(prefs.lang, "error.username_taken");
+            return render(
+                prefs,
                 &token,
-                &form.csrf,
+                form.csrf,
                 username,
-                Some(&message),
+                Some(message.to_owned()),
                 StatusCode::CONFLICT,
-            ));
+            );
         }
         Err(err) => return Err(err.into()),
     };
     if !invites::mark_used(&mut *tx, invite.id, user.id, now).await? {
-        return Ok(invalid_invite());
+        return invalid_invite();
     }
+    // The new account starts with the language and theme of the page.
+    users::set_preferences(&mut *tx, user.id, prefs.lang, prefs.theme, 0).await?;
     tx.commit().await?;
     tracing::info!(
         user_id = user.id,
@@ -141,58 +154,24 @@ pub async fn submit(
 }
 
 fn render(
-    ctx: &Ctx<'_>,
+    prefs: Prefs,
     token: &str,
-    csrf: &str,
+    csrf: String,
     username: &str,
-    error: Option<&str>,
+    error: Option<String>,
     status: StatusCode,
-) -> Response {
-    let min = MIN_PASSWORD_CHARS.to_string();
-    let min_attr = format!(r#" minlength="{MIN_PASSWORD_CHARS}""#);
-    let fields = [
-        Field {
-            name: "username",
-            label: ctx.t("field.username"),
-            kind: "text",
-            value: username,
-            autocomplete: "username",
-            hint: Some(ctx.t("field.username_hint")),
-            extra: r#" maxlength="64""#,
+) -> Result<Response, AppError> {
+    let back = format!("/invite/{token}");
+    let page = Page::public(prefs, "invite.title", Some(csrf.clone()), &back);
+    html::render(
+        status,
+        &InvitePage {
+            page,
+            token,
+            csrf,
+            username,
+            min_password: MIN_PASSWORD_CHARS,
+            error,
         },
-        Field {
-            name: "password",
-            label: ctx.t("field.password"),
-            kind: "password",
-            value: "",
-            autocomplete: "new-password",
-            hint: Some(ctx.tf("field.password_hint", &[("min", &min)])),
-            extra: &min_attr,
-        },
-        Field {
-            name: "password_confirm",
-            label: ctx.t("field.password_confirm"),
-            kind: "password",
-            value: "",
-            autocomplete: "new-password",
-            hint: None,
-            extra: &min_attr,
-        },
-    ];
-    let fields: String = fields.iter().map(Field::render).collect();
-    let body = format!(
-        r#"<p>{intro}</p>
-{alert}
-<form method="post" action="/invite/{token}">
-{csrf}
-{fields}
-<p><button type="submit">{submit}</button></p>
-</form>"#,
-        intro = ctx.t("invite.intro"),
-        alert = html::alert(error),
-        token = html::esc(token),
-        csrf = csrf_field(csrf),
-        submit = ctx.t("invite.submit"),
-    );
-    html::response(status, html::page(ctx, "invite.title", None, &body))
+    )
 }

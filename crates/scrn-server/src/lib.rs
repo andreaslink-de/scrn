@@ -14,6 +14,7 @@ pub mod html;
 pub mod i18n;
 pub mod image;
 pub mod net;
+pub mod prefs;
 pub mod rate_limit;
 pub mod repo;
 pub mod routes;

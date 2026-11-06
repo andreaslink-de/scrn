@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+<p>{{ page.t("invite.intro") }}</p>
+{% if let Some(error) = error %}<p class="alert" role="alert">{{ error }}</p>{% endif %}
+<form method="post" action="/invite/{{ token }}">
+<input type="hidden" name="csrf" value="{{ csrf }}">
+{% include "account_fields.html" %}
+<button type="submit">{{ page.t("invite.submit") }}</button>
+</form>
+</div>
+{% endblock %}
