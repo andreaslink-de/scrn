@@ -6,6 +6,7 @@ mod home;
 mod invite;
 mod login;
 mod setup;
+mod tokens;
 
 use axum::Router;
 use axum::http::HeaderValue;
@@ -22,6 +23,8 @@ pub fn router(state: AppState) -> Router {
         .route("/healthz", get(health::healthz))
         .route("/", get(home::root))
         .route("/app", get(home::app))
+        .route("/app/tokens", get(tokens::show).post(tokens::create))
+        .route("/app/tokens/{id}/revoke", post(tokens::revoke))
         .route("/setup", get(setup::show).post(setup::submit))
         .route("/login", get(login::show).post(login::submit))
         .route("/logout", post(login::logout))
@@ -31,6 +34,7 @@ pub fn router(state: AppState) -> Router {
         .route("/admin/invites/{id}/delete", post(admin::delete_invite))
         .route("/admin/users/{id}/disable", post(admin::disable_user))
         .route("/admin/users/{id}/enable", post(admin::enable_user))
+        .nest(scrn_proto::API_PREFIX, crate::api::router(state.clone()))
         .fallback(not_found)
         .with_state(state)
 }

@@ -68,8 +68,9 @@ pub fn page(ctx: &Ctx<'_>, title_key: &str, nav: Option<&Nav<'_>>, body: &str) -
             String::new()
         };
         format!(
-            r#"<nav><a href="/app">{home}</a>{admin} <form method="post" action="/logout">{csrf}<button type="submit">{logout}</button></form></nav>"#,
+            r#"<nav><a href="/app">{home}</a> <a href="/app/tokens">{tokens}</a>{admin} <form method="post" action="/logout">{csrf}<button type="submit">{logout}</button></form></nav>"#,
             home = ctx.t("nav.home"),
+            tokens = ctx.t("nav.tokens"),
             csrf = csrf_field(nav.csrf),
             logout = ctx.t("nav.logout"),
         )

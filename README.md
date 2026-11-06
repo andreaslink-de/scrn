@@ -67,6 +67,18 @@ administration page (`/admin`), it is single-use and expires after the chosen
 number of days. Administrators can disable accounts, which also ends their
 sessions.
 
+### API tokens
+
+The desktop client authenticates with an API token. Create one per device on
+the page *API tokens* (`/app/tokens`). The token (`scrn_…`) is shown only
+once; the server stores just its SHA-256 hash. Test it with:
+
+```sh
+curl -H "Authorization: Bearer scrn_…" <SCRN_BASE_URL>/api/v1/me
+```
+
+Revoked tokens and tokens of disabled accounts are rejected with 401.
+
 ### Configuration
 
 All settings are environment variables, documented in

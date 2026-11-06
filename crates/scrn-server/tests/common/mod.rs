@@ -11,7 +11,7 @@ use axum::Router;
 use axum::body::Body;
 use axum::extract::connect_info::MockConnectInfo;
 use axum::http::header::{CONTENT_TYPE, COOKIE, LOCATION, SET_COOKIE};
-use axum::http::{Request, StatusCode};
+use axum::http::{HeaderMap, Request, StatusCode};
 use http_body_util::BodyExt;
 use scrn_server::clock::ManualClock;
 use scrn_server::repo::users::{self, NewUser, Role, User};
@@ -95,6 +95,7 @@ pub struct TestResponse {
     pub status: StatusCode,
     pub location: Option<String>,
     pub set_cookies: Vec<String>,
+    pub headers: HeaderMap,
     pub body: String,
 }
 
@@ -194,11 +195,13 @@ impl Client {
                 self.cookies.insert(name.to_owned(), value.to_owned());
             }
         }
+        let headers = response.headers().clone();
         let bytes = response.into_body().collect().await.unwrap().to_bytes();
         TestResponse {
             status,
             location,
             set_cookies,
+            headers,
             body: String::from_utf8(bytes.to_vec()).unwrap(),
         }
     }
