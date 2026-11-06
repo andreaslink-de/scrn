@@ -2,7 +2,7 @@
 
 app.name = SCRN
 
-nav.home = Übersicht
+nav.home = Galerie
 nav.admin = Verwaltung
 nav.logout = Abmelden
 
@@ -24,8 +24,6 @@ invite.title = Registrieren
 invite.intro = Du wurdest zu SCRN eingeladen. Wähle einen Benutzernamen und ein Passwort.
 invite.submit = Konto anlegen
 
-home.title = Übersicht
-home.signed_in_as = Angemeldet als {username}.
 
 tokens.title = API-Tokens
 tokens.intro = Der Desktop-Client meldet sich mit einem API-Token an. Lege für jedes Gerät ein eigenes Token an, dann kannst du es einzeln widerrufen.
@@ -95,7 +93,6 @@ lang.en = English
 theme.dark = Dunkel
 theme.light = Hell
 prefs.apply = Übernehmen
-home.gallery_soon = Hier erscheint bald die Galerie deiner Screenshots.
 settings.title = Einstellungen
 settings.prefs = Darstellung und Sprache
 settings.language = Sprache
@@ -123,3 +120,43 @@ admin.quota.default = Standard
 admin.quota.save = Setzen
 error.expiry_days = Die eigene Dauer muss zwischen 1 und 3650 Tagen liegen.
 error.quota_invalid = Das Kontingent muss leer oder eine ganze Zahl ab 0 sein.
+
+# Gallery (S7b)
+gallery.title = Galerie
+gallery.filter = Filter
+gallery.all = Alle
+gallery.public = Öffentlich
+gallery.private = Privat
+gallery.empty = Noch keine Screenshots. Lade mit dem Desktop-Client einen hoch.
+gallery.more = Mehr laden
+gallery.alt = Screenshot vom {date}
+shot.title = Screenshot
+shot.back = ← Zurück zur Galerie
+shot.info = Details
+shot.dimensions = Abmessungen
+shot.size = Dateigröße
+shot.created = Hochgeladen
+shot.visibility = Sichtbarkeit
+shot.public = Öffentlich
+shot.private = Privat
+shot.expired = Abgelaufen
+shot.expires = Link läuft ab
+shot.short_url = Kurzlink
+shot.make_public = Öffentlich machen
+shot.make_public_hint = Das Bild bekommt einen neuen Kurzlink. Er läuft nach deinem Standard-Ablauf ab.
+shot.make_private = Privat machen
+shot.make_private_hint = Der Kurzlink wird gelöscht und funktioniert danach nicht mehr, auch nicht, wenn du das Bild später wieder öffentlich machst.
+shot.expiry = Ablauf des Links
+shot.expiry_choice = Läuft ab
+shot.expiry_date = Datum (bei „Bestimmtes Datum“)
+shot.expiry_date_hint = Der Link funktioniert bis zum Ende dieses Tages (UTC).
+shot.delete = Löschen
+shot.delete_open = Screenshot löschen …
+shot.delete_confirm = Das Bild, die Vorschau und der Kurzlink werden endgültig gelöscht.
+shot.delete_final = Endgültig löschen
+expiry.date = Bestimmtes Datum
+copy.button = Kopieren
+copy.done = Kopiert
+copy.manual = Markiert, mit Strg+C kopieren
+error.expiry_date = Das Datum muss in der Zukunft liegen und höchstens 3650 Tage entfernt sein.
+error.expiry_private = Nur öffentliche Screenshots haben einen Ablauf.

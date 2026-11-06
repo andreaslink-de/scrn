@@ -243,6 +243,11 @@ const ASSETS: &[Asset] = &[
         data: include_bytes!("../static/htmx.min.js"),
     },
     Asset {
+        name: "app.js",
+        content_type: "text/javascript; charset=utf-8",
+        data: include_bytes!("../static/app.js"),
+    },
+    Asset {
         name: "favicon.svg",
         content_type: "image/svg+xml",
         data: include_bytes!("../static/favicon.svg"),
@@ -310,6 +315,43 @@ pub fn format_time(ts: i64) -> String {
     )
 }
 
+/// Formats the UTC date of a Unix timestamp as `YYYY-MM-DD`, the value
+/// format of `<input type="date">`.
+pub fn format_date(ts: i64) -> String {
+    let (y, m, d) = civil_from_days(ts.div_euclid(86_400));
+    format!("{y:04}-{m:02}-{d:02}")
+}
+
+/// Parses `YYYY-MM-DD` into days since 1970-01-01. Rejects dates that do
+/// not exist, such as 2026-02-30.
+pub fn parse_date(value: &str) -> Option<i64> {
+    let mut parts = value.trim().split('-');
+    let (y, m, d) = (parts.next()?, parts.next()?, parts.next()?);
+    if parts.next().is_some() || y.len() != 4 || m.len() != 2 || d.len() != 2 {
+        return None;
+    }
+    let y: i64 = y.parse().ok()?;
+    let m: i64 = m.parse().ok()?;
+    let d: i64 = d.parse().ok()?;
+    if !(1..=12).contains(&m) || !(1..=31).contains(&d) {
+        return None;
+    }
+    let days = days_from_civil(y, m, d);
+    // Round trip to reject days beyond the end of the month.
+    (civil_from_days(days) == (y, m, d)).then_some(days)
+}
+
+/// Inverse of [`civil_from_days`] (Howard Hinnant).
+fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
+    let y = if m <= 2 { y - 1 } else { y };
+    let era = y.div_euclid(400);
+    let yoe = y.rem_euclid(400);
+    let mp = if m > 2 { m - 3 } else { m + 9 };
+    let doy = (153 * mp + 2) / 5 + d - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    era * 146_097 + doe - 719_468
+}
+
 /// Converts days since 1970-01-01 to a proleptic Gregorian date
 /// (algorithm by Howard Hinnant).
 fn civil_from_days(days: i64) -> (i64, i64, i64) {
@@ -367,6 +409,29 @@ mod tests {
         assert_eq!(format_time(951_782_400), "2000-02-29 00:00 UTC");
         assert_eq!(format_time(1_793_914_620), "2026-11-05 21:37 UTC");
         assert_eq!(format_time(-60), "1969-12-31 23:59 UTC");
+    }
+
+    #[test]
+    fn dates() {
+        assert_eq!(format_date(0), "1970-01-01");
+        assert_eq!(format_date(1_793_914_620), "2026-11-05");
+        assert_eq!(parse_date("1970-01-01"), Some(0));
+        assert_eq!(parse_date("2000-02-29"), Some(951_782_400 / 86_400));
+        assert_eq!(parse_date("2026-11-05"), Some(1_793_914_620 / 86_400));
+        for bad in [
+            "",
+            "2026-02-30",
+            "2025-02-29",
+            "2026-13-01",
+            "26-01-01",
+            "2026-1-01",
+            "x",
+        ] {
+            assert_eq!(parse_date(bad), None, "{bad}");
+        }
+        for days in [-1000, 0, 10_957, 20_397, 100_000] {
+            assert_eq!(parse_date(&format_date(days * 86_400)), Some(days));
+        }
     }
 
     #[test]

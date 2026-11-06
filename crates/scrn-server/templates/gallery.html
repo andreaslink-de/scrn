@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block content %}
+<nav class="filters" aria-label="{{ page.t("gallery.filter") }}">
+<a href="/app"{% if filter == "all" %} aria-current="page"{% endif %}>{{ page.t("gallery.all") }}</a>
+<a href="/app?filter=public"{% if filter == "public" %} aria-current="page"{% endif %}>{{ page.t("gallery.public") }}</a>
+<a href="/app?filter=private"{% if filter == "private" %} aria-current="page"{% endif %}>{{ page.t("gallery.private") }}</a>
+</nav>
+{% if cards.is_empty() %}
+<div class="card"><p>{{ page.t("gallery.empty") }}</p></div>
+{% else %}
+<ul class="grid">
+{% include "gallery_cards.html" %}
+</ul>
+{% endif %}
+{% endblock %}

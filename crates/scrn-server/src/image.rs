@@ -140,7 +140,7 @@ fn encode(pixels: &Pixels) -> Result<Vec<u8>, ImageError> {
 
 /// Size of the thumbnail: fits into the maximum box, keeps the aspect ratio
 /// and never enlarges.
-fn thumb_size(width: u32, height: u32) -> (u32, u32) {
+pub fn thumb_size(width: u32, height: u32) -> (u32, u32) {
     if width <= THUMB_MAX_WIDTH && height <= THUMB_MAX_HEIGHT {
         return (width, height);
     }

@@ -19,6 +19,7 @@ pub mod rate_limit;
 pub mod repo;
 pub mod routes;
 pub mod short_id;
+pub mod shots;
 pub mod storage;
 
 use std::future::Future;

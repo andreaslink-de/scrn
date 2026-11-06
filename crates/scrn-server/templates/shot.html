@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block content %}
+<p><a href="/app">{{ page.t("shot.back") }}</a></p>
+{% if let Some(error) = error %}<p class="alert" role="alert">{{ error }}</p>{% endif %}
+<div class="shot-detail">
+<figure class="shot-image">
+<a href="/app/shots/{{ id }}/image"><img src="/app/shots/{{ id }}/image" width="{{ width }}" height="{{ height }}" alt="{{ page.tf("gallery.alt", "date", page.time(created_at).as_str()) }}"></a>
+</figure>
+<div>
+<section class="card" aria-labelledby="info-title">
+<h2 id="info-title">{{ page.t("shot.info") }}</h2>
+<dl class="facts">
+<dt>{{ page.t("shot.dimensions") }}</dt><dd>{{ width }} × {{ height }} px</dd>
+<dt>{{ page.t("shot.size") }}</dt><dd>{{ page.bytes(bytes) }}</dd>
+<dt>{{ page.t("shot.created") }}</dt><dd>{{ page.time(created_at) }}</dd>
+<dt>{{ page.t("shot.visibility") }}</dt><dd>{% if expired %}{{ page.t("shot.expired") }}{% else if public %}{{ page.t("shot.public") }}{% else %}{{ page.t("shot.private") }}{% endif %}</dd>
+{% if public %}<dt>{{ page.t("shot.expires") }}</dt><dd>{% match expires_at %}{% when Some(at) %}{{ page.time(at) }}{% when None %}{{ page.t("expiry.never") }}{% endmatch %}</dd>{% endif %}
+</dl>
+{% if let Some(url) = short_url %}{% let input_id = "short-url".to_owned() %}
+<p class="label">{{ page.t("shot.short_url") }}</p>
+{% include "copy_link.html" %}
+{% endif %}
+</section>
+
+<section class="card" aria-labelledby="visibility-title">
+<h2 id="visibility-title">{{ page.t("shot.visibility") }}</h2>
+<form method="post" action="/app/shots/{{ id }}/visibility">
+<input type="hidden" name="csrf" value="{{ csrf }}">
+{% if public %}
+<input type="hidden" name="visibility" value="private">
+<p class="muted">{{ page.t("shot.make_private_hint") }}</p>
+<button type="submit" class="secondary">{{ page.t("shot.make_private") }}</button>
+{% else %}
+<input type="hidden" name="visibility" value="public">
+<p class="muted">{{ page.t("shot.make_public_hint") }}</p>
+<button type="submit">{{ page.t("shot.make_public") }}</button>
+{% endif %}
+</form>
+</section>
+
+{% if public %}
+<section class="card" aria-labelledby="expiry-title">
+<h2 id="expiry-title">{{ page.t("shot.expiry") }}</h2>
+<form method="post" action="/app/shots/{{ id }}/expiry">
+<input type="hidden" name="csrf" value="{{ csrf }}">
+<div class="field">
+<label for="expiry">{{ page.t("shot.expiry_choice") }}</label>
+<select id="expiry" name="expiry" class="short">
+<option value="0"{% if expiry == "0" %} selected{% endif %}>{{ page.t("expiry.never") }}</option>
+<option value="1">{{ page.t("expiry.1") }}</option>
+<option value="7">{{ page.t("expiry.7") }}</option>
+<option value="30">{{ page.t("expiry.30") }}</option>
+<option value="custom"{% if expiry == "custom" %} selected{% endif %}>{{ page.t("expiry.date") }}</option>
+</select>
+</div>
+<div class="field">
+<label for="custom_date">{{ page.t("shot.expiry_date") }}</label>
+<input id="custom_date" name="custom_date" type="date" class="short" min="{{ min_date }}" max="{{ max_date }}" value="{{ custom_date }}" aria-describedby="date-hint">
+<small id="date-hint" class="hint">{{ page.t("shot.expiry_date_hint") }}</small>
+</div>
+<button type="submit">{{ page.t("settings.save") }}</button>
+</form>
+</section>
+{% endif %}
+
+<section class="card" aria-labelledby="delete-title">
+<h2 id="delete-title">{{ page.t("shot.delete") }}</h2>
+<details>
+<summary>{{ page.t("shot.delete_open") }}</summary>
+<p>{{ page.t("shot.delete_confirm") }}</p>
+<form method="post" action="/app/shots/{{ id }}/delete">
+<input type="hidden" name="csrf" value="{{ csrf }}">
+<button type="submit" class="danger">{{ page.t("shot.delete_final") }}</button>
+</form>
+</details>
+</section>
+</div>
+</div>
+{% endblock %}
