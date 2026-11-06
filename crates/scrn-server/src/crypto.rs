@@ -57,6 +57,58 @@ pub fn hash_hex_token(token: &str) -> Option<Sha256> {
     }
 }
 
+/// Prefix of API tokens. It makes leaked tokens easy to recognize for
+/// secret scanners.
+pub const API_TOKEN_PREFIX: &str = "scrn_";
+/// 62^43 > 2^256, so 43 base62 digits hold any 32-byte value.
+const API_TOKEN_DIGITS: usize = 43;
+const BASE62: &[u8; 62] = b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+
+/// A new API token: `scrn_` followed by 32 random bytes in base62, together
+/// with the SHA-256 hash of the whole string. Only the hash is stored.
+pub struct ApiTokenSecret {
+    pub token: String,
+    pub hash: Sha256,
+}
+
+impl ApiTokenSecret {
+    pub fn generate() -> Result<Self, CryptoError> {
+        let token = format!("{API_TOKEN_PREFIX}{}", base62_fixed(&random_bytes::<32>()?));
+        let hash = sha256(token.as_bytes());
+        Ok(Self { token, hash })
+    }
+}
+
+/// Hashes an API token received from a client for lookup. Returns `None` for
+/// strings that do not have the token format.
+pub fn hash_api_token(token: &str) -> Option<Sha256> {
+    let digits = token.strip_prefix(API_TOKEN_PREFIX)?;
+    if digits.len() == API_TOKEN_DIGITS && digits.bytes().all(|b| b.is_ascii_alphanumeric()) {
+        Some(sha256(token.as_bytes()))
+    } else {
+        None
+    }
+}
+
+/// Encodes 32 bytes as a big-endian number in exactly 43 base62 digits,
+/// padded with leading zeros.
+fn base62_fixed(bytes: &[u8; 32]) -> String {
+    let mut num = *bytes;
+    let mut digits = [0u8; API_TOKEN_DIGITS];
+    for digit in digits.iter_mut().rev() {
+        // Long division of the 256-bit number by 62.
+        let mut rem = 0u32;
+        for byte in &mut num {
+            let acc = (rem << 8) | u32::from(*byte);
+            // acc < 62 * 256, so the quotient fits into a byte.
+            *byte = u8::try_from(acc / 62).unwrap_or(u8::MAX);
+            rem = acc % 62;
+        }
+        *digit = BASE62[usize::try_from(rem).unwrap_or(0)];
+    }
+    digits.iter().copied().map(char::from).collect()
+}
+
 pub fn hex_encode(bytes: &[u8]) -> String {
     const DIGITS: &[u8; 16] = b"0123456789abcdef";
     let mut out = String::with_capacity(bytes.len() * 2);
@@ -113,6 +165,47 @@ mod tests {
         for input in ["", "abc", &"A".repeat(64), &"g".repeat(64), &"a".repeat(65)] {
             assert_eq!(hash_hex_token(input), None, "{input}");
         }
+    }
+
+    #[test]
+    fn api_tokens_have_the_scrn_format_and_hash_matches() {
+        let a = ApiTokenSecret::generate().unwrap();
+        let b = ApiTokenSecret::generate().unwrap();
+        assert_ne!(a.token, b.token);
+        assert!(a.token.starts_with("scrn_"));
+        assert_eq!(a.token.len(), 5 + 43);
+        assert_eq!(hash_api_token(&a.token), Some(a.hash));
+    }
+
+    #[test]
+    fn hash_api_token_rejects_foreign_input() {
+        let digits = "a".repeat(43);
+        for input in [
+            String::new(),
+            digits.clone(),
+            format!("scrn_{}", "a".repeat(42)),
+            format!("scrn_{}", "a".repeat(44)),
+            format!("scrn_{}-", "a".repeat(42)),
+            format!("SCRN_{digits}"),
+            "a".repeat(64),
+        ] {
+            assert_eq!(hash_api_token(&input), None, "{input}");
+        }
+        assert!(hash_api_token(&format!("scrn_{digits}")).is_some());
+    }
+
+    #[test]
+    fn base62_encoding_is_fixed_width() {
+        assert_eq!(base62_fixed(&[0; 32]), "0".repeat(43));
+        let mut one = [0u8; 32];
+        one[31] = 61;
+        assert_eq!(base62_fixed(&one), format!("{}z", "0".repeat(42)));
+        one[31] = 62;
+        assert_eq!(base62_fixed(&one), format!("{}10", "0".repeat(41)));
+        // 2^256 - 1 still fits into 43 digits.
+        let max = base62_fixed(&[0xff; 32]);
+        assert_eq!(max.len(), 43);
+        assert_ne!(max.as_bytes()[0], b'0');
     }
 
     #[test]

@@ -1,6 +1,7 @@
 //! SCRN server library: configuration, database, HTTP routes and the
 //! server lifecycle. The binary in `main.rs` is a thin wrapper around it.
 
+pub mod api;
 pub mod auth;
 pub mod clock;
 pub mod config;

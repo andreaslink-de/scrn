@@ -3,6 +3,7 @@
 app.name = SCRN
 
 nav.home = Overview
+nav.tokens = API tokens
 nav.admin = Administration
 nav.logout = Sign out
 
@@ -27,6 +28,17 @@ invite.submit = Create account
 home.title = Overview
 home.signed_in_as = Signed in as {username}.
 
+tokens.title = API tokens
+tokens.intro = The desktop client signs in with an API token. Create a separate token for each device so you can revoke them one by one.
+tokens.name = Name, e.g. Laptop
+tokens.create = Create token
+tokens.created = New token created. It is shown only this once, copy it now:
+tokens.none = No tokens yet.
+tokens.revoke = Revoke
+tokens.never = never
+tokens.col.name = Name
+tokens.col.last_used = Last used
+
 admin.title = Administration
 admin.users = Users
 admin.invites = Invitations
@@ -49,6 +61,7 @@ role.admin = Administrator
 role.user = User
 status.active = Active
 status.disabled = Disabled
+status.revoked = Revoked
 invite.status.open = Open
 invite.status.used = Used
 invite.status.expired = Expired
@@ -71,3 +84,4 @@ error.setup_token_invalid = The setup code is invalid.
 error.invite_invalid = This invitation is invalid, has expired or has already been used.
 error.invite_days = The validity must be between 1 and 30 days.
 error.cannot_disable_self = You cannot disable your own account.
+error.token_name = The name must be between 1 and 100 characters long.

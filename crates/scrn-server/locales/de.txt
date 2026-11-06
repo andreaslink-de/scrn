@@ -3,6 +3,7 @@
 app.name = SCRN
 
 nav.home = Übersicht
+nav.tokens = API-Tokens
 nav.admin = Verwaltung
 nav.logout = Abmelden
 
@@ -27,6 +28,17 @@ invite.submit = Konto anlegen
 home.title = Übersicht
 home.signed_in_as = Angemeldet als {username}.
 
+tokens.title = API-Tokens
+tokens.intro = Der Desktop-Client meldet sich mit einem API-Token an. Lege für jedes Gerät ein eigenes Token an, dann kannst du es einzeln widerrufen.
+tokens.name = Name, z. B. Laptop
+tokens.create = Token erstellen
+tokens.created = Neues Token erstellt. Es wird nur dieses eine Mal angezeigt, kopiere es jetzt:
+tokens.none = Noch keine Tokens.
+tokens.revoke = Widerrufen
+tokens.never = nie
+tokens.col.name = Name
+tokens.col.last_used = Zuletzt benutzt
+
 admin.title = Verwaltung
 admin.users = Benutzer
 admin.invites = Einladungen
@@ -49,6 +61,7 @@ role.admin = Administrator
 role.user = Benutzer
 status.active = Aktiv
 status.disabled = Deaktiviert
+status.revoked = Widerrufen
 invite.status.open = Offen
 invite.status.used = Benutzt
 invite.status.expired = Abgelaufen
@@ -71,3 +84,4 @@ error.setup_token_invalid = Der Einrichtungscode ist ungültig.
 error.invite_invalid = Diese Einladung ist ungültig, abgelaufen oder wurde bereits benutzt.
 error.invite_days = Die Gültigkeit muss zwischen 1 und 30 Tagen liegen.
 error.cannot_disable_self = Du kannst dein eigenes Konto nicht deaktivieren.
+error.token_name = Der Name muss 1 bis 100 Zeichen lang sein.

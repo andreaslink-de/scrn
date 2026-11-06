@@ -27,5 +27,6 @@ workspace = true
 
 [dev-dependencies]
 http-body-util = "0.1.5"
+serde_json = "1"
 tempfile = "3.27.0"
 tower = { version = "0.5.3", default-features = false, features = ["util"] }
