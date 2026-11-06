@@ -76,6 +76,7 @@ a decision for C1.
 |---|--------|
 | 3 | ok: captures take about 0.6 s |
 | 7 | ok: overlay 0 on HG342PCB shows (0, 0, 3440×1440), overlay 1 on BenQ EW2420 shows (3440, 0, 1920×1080); a selection on the right monitor was saved at x=3897, Esc closes both overlays |
+| – | ok: the tray menu is no longer in the screenshot |
 | 2 | no tray click events arrive (AppIndicator); the menu is the only way in, which is enough |
 | 8, 9 | not tested yet: hand-over of `scrn capture`, fractional scaling |
 
