@@ -19,6 +19,7 @@ path = "src/main.rs"
 tauri-build = { version = "2.7.4", features = [] }
 
 [dependencies]
+arboard = { version = "3.7", default-features = false }
 # Screenshot portal (xdg-desktop-portal) over D-Bus, pure Rust.
 ashpd = { version = "0.14.0", default-features = false, features = ["tokio", "screenshot"] }
 # Already pulled in by Tauri; needed to put each overlay fullscreen on its
