@@ -93,6 +93,11 @@ thumbnail under `data/files`. Public screenshots get a short link;
 never). `GET /api/v1/screenshots?limit=N` lists the newest screenshots and
 `DELETE /api/v1/screenshots/<id>` deletes one.
 
+A public screenshot is served at `<SCRN_BASE_URL>/<short_id>` (also with
+`.png`). Private, expired and unknown IDs all return the same 404 page.
+Browsers may cache an image for at most five minutes (never beyond the link's
+expiry), and each client IP may fetch 300 links per minute.
+
 Each user has a storage quota (`SCRN_DEFAULT_QUOTA_MB` unless set per user,
 0 means unlimited). Uploads beyond it fail with 413 and the code
 `quota_exceeded`; lowering a quota never deletes anything.

@@ -74,6 +74,7 @@ error.bad_request = The request is invalid.
 error.csrf = The form has expired. Reload the page and try again.
 error.internal = An internal error occurred.
 error.too_many_attempts = Too many attempts. Please wait a few minutes.
+error.too_many_requests = Too many requests. Please wait a moment.
 error.login_failed = Username or password is incorrect.
 error.username_invalid = The username is invalid.
 error.username_taken = This username is already taken.

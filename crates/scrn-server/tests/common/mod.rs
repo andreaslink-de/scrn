@@ -117,7 +117,9 @@ pub struct TestResponse {
     pub location: Option<String>,
     pub set_cookies: Vec<String>,
     pub headers: HeaderMap,
+    /// The body as text (lossy for binary responses).
     pub body: String,
+    pub bytes: Vec<u8>,
 }
 
 impl TestResponse {
@@ -239,7 +241,8 @@ impl Client {
             location,
             set_cookies,
             headers,
-            body: String::from_utf8(bytes.to_vec()).unwrap(),
+            body: String::from_utf8_lossy(&bytes).into_owned(),
+            bytes: bytes.to_vec(),
         }
     }
 }
@@ -254,4 +257,31 @@ fn encode(s: &str) -> String {
             }
         })
         .collect()
+}
+
+/// An RGB test image with a text chunk that must not survive the upload.
+pub fn png_image(width: u32, height: u32) -> Vec<u8> {
+    let pixels: Vec<u8> = (0..width * height * 3).map(|i| (i % 251) as u8).collect();
+    let mut out = Vec::new();
+    let mut encoder = png::Encoder::new(&mut out, width, height);
+    encoder.set_color(png::ColorType::Rgb);
+    encoder.set_depth(png::BitDepth::Eight);
+    encoder
+        .add_text_chunk("Comment".into(), "secret-metadata".into())
+        .unwrap();
+    let mut writer = encoder.write_header().unwrap();
+    writer.write_image_data(&pixels).unwrap();
+    writer.finish().unwrap();
+    out
+}
+
+/// Uploads `body` as PNG through the API.
+pub async fn upload(api: &mut Client, query: &str, body: Vec<u8>) -> TestResponse {
+    api.send_raw(
+        "POST",
+        &format!("/api/v1/screenshots{query}"),
+        Some("image/png"),
+        body,
+    )
+    .await
 }

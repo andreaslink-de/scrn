@@ -53,6 +53,8 @@ pub struct AppState {
     pub setup_token: Arc<Mutex<Option<Sha256>>>,
     pub login_ip_limiter: Arc<RateLimiter>,
     pub login_user_limiter: Arc<RateLimiter>,
+    /// Requests to public short links per client IP.
+    pub public_ip_limiter: Arc<RateLimiter>,
     /// Hash verified for unknown usernames so that the response time does
     /// not reveal whether an account exists.
     pub dummy_password_hash: Arc<str>,
@@ -155,6 +157,10 @@ pub async fn init_state_with_clock(
         setup_token: Arc::new(Mutex::new(None)),
         login_ip_limiter: Arc::new(RateLimiter::new(LOGIN_ATTEMPTS_PER_IP, LOGIN_WINDOW)),
         login_user_limiter: Arc::new(RateLimiter::new(LOGIN_FAILURES_PER_USER, LOGIN_WINDOW)),
+        public_ip_limiter: Arc::new(RateLimiter::new(
+            routes::PUBLIC_REQUESTS_PER_IP,
+            routes::PUBLIC_WINDOW,
+        )),
         dummy_password_hash,
         image_permits: Arc::new(tokio::sync::Semaphore::new(IMAGE_WORKERS)),
     })

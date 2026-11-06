@@ -74,6 +74,7 @@ error.bad_request = Die Anfrage ist ungültig.
 error.csrf = Das Formular ist abgelaufen. Lade die Seite neu und versuche es noch einmal.
 error.internal = Ein interner Fehler ist aufgetreten.
 error.too_many_attempts = Zu viele Versuche. Bitte warte einige Minuten.
+error.too_many_requests = Zu viele Anfragen. Bitte warte einen Moment.
 error.login_failed = Benutzername oder Passwort ist falsch.
 error.username_invalid = Der Benutzername ist ungültig.
 error.username_taken = Dieser Benutzername ist bereits vergeben.
