@@ -41,6 +41,31 @@ pub async fn connect(path: &Path) -> Result<SqlitePool, DbError> {
     Ok(pool)
 }
 
+/// Writes a consistent copy of the database to `target` while the server
+/// keeps running (`VACUUM INTO`). The target must not exist yet.
+pub async fn backup(pool: &SqlitePool, target: &Path) -> Result<(), BackupError> {
+    if target.exists() {
+        return Err(BackupError::Exists(target.display().to_string()));
+    }
+    let target = target.to_str().ok_or(BackupError::Path)?.to_owned();
+    sqlx::query("VACUUM INTO ?")
+        .bind(target)
+        .execute(pool)
+        .await
+        .map_err(BackupError::Db)?;
+    Ok(())
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum BackupError {
+    #[error("backup target {0} already exists")]
+    Exists(String),
+    #[error("backup path is not valid UTF-8")]
+    Path,
+    #[error("backup failed: {0}")]
+    Db(#[source] sqlx::Error),
+}
+
 /// Runs a trivial query to check that the database answers.
 pub async fn ping(pool: &SqlitePool) -> Result<(), sqlx::Error> {
     sqlx::query("SELECT 1").execute(pool).await.map(|_| ())
@@ -70,6 +95,29 @@ mod tests {
         assert_eq!(fk, 1);
 
         ping(&pool).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn backup_is_a_complete_database() {
+        let dir = tempfile::tempdir().unwrap();
+        let pool = connect(&dir.path().join("scrn.db")).await.unwrap();
+        sqlx::query("INSERT INTO users (username, created_at) VALUES ('alice', 1)")
+            .execute(&pool)
+            .await
+            .unwrap();
+        let target = dir.path().join("backup.db");
+        backup(&pool, &target).await.unwrap();
+        assert!(matches!(
+            backup(&pool, &target).await,
+            Err(BackupError::Exists(_))
+        ));
+
+        let copy = connect(&target).await.unwrap();
+        let name: String = sqlx::query_scalar("SELECT username FROM users")
+            .fetch_one(&copy)
+            .await
+            .unwrap();
+        assert_eq!(name, "alice");
     }
 
     #[tokio::test]

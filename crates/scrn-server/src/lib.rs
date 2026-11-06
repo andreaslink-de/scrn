@@ -9,6 +9,7 @@ pub mod cookies;
 pub mod crypto;
 pub mod db;
 pub mod error;
+pub mod hardening;
 pub mod healthcheck;
 pub mod html;
 pub mod i18n;
@@ -44,6 +45,13 @@ pub const LOGIN_FAILURES_PER_USER: u32 = 10;
 /// Rate limit window for logins in seconds.
 pub const LOGIN_WINDOW: i64 = 15 * 60;
 
+/// Failed API authentications per client IP within [`API_FAILURE_WINDOW`].
+pub const API_FAILURES_PER_IP: u32 = 30;
+pub const API_FAILURE_WINDOW: i64 = 15 * 60;
+/// Uploads per user within [`UPLOAD_WINDOW`].
+pub const UPLOADS_PER_USER: u32 = 120;
+pub const UPLOAD_WINDOW: i64 = 60 * 60;
+
 /// Uploads decoded in parallel.
 pub const IMAGE_WORKERS: usize = 2;
 
@@ -59,6 +67,10 @@ pub struct AppState {
     pub login_user_limiter: Arc<RateLimiter>,
     /// Requests to public short links per client IP.
     pub public_ip_limiter: Arc<RateLimiter>,
+    /// Failed bearer authentications per client IP.
+    pub api_failure_limiter: Arc<RateLimiter>,
+    /// Uploads per user.
+    pub upload_limiter: Arc<RateLimiter>,
     /// Hash verified for unknown usernames so that the response time does
     /// not reveal whether an account exists.
     pub dummy_password_hash: Arc<str>,
@@ -174,6 +186,8 @@ pub async fn init_state_with_clock(
             routes::PUBLIC_REQUESTS_PER_IP,
             routes::PUBLIC_WINDOW,
         )),
+        api_failure_limiter: Arc::new(RateLimiter::new(API_FAILURES_PER_IP, API_FAILURE_WINDOW)),
+        upload_limiter: Arc::new(RateLimiter::new(UPLOADS_PER_USER, UPLOAD_WINDOW)),
         dummy_password_hash,
         image_permits: Arc::new(tokio::sync::Semaphore::new(IMAGE_WORKERS)),
         passkeys,

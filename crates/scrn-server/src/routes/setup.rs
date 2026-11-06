@@ -11,7 +11,7 @@ use serde::Deserialize;
 
 use super::with_cookie;
 use crate::AppState;
-use crate::auth::{self, MIN_PASSWORD_CHARS};
+use crate::auth::{self, ClientIp, MIN_PASSWORD_CHARS};
 use crate::error::AppError;
 use crate::html::{self, Page};
 use crate::i18n;
@@ -54,11 +54,21 @@ pub async fn show(
 
 pub async fn submit(
     State(state): State<AppState>,
+    ClientIp(ip): ClientIp,
     prefs: Prefs,
     headers: HeaderMap,
     Form(form): Form<SetupForm>,
 ) -> Result<Response, AppError> {
     auth::verify_form_csrf(&headers, &state, &form.csrf)?;
+    // Each attempt may cost an argon2 hash, so it shares the login budget.
+    let ip_key = ip.to_string();
+    let now = state.clock.now();
+    if state.login_ip_limiter.is_limited(&ip_key, now) {
+        return Err(AppError::TooManyRequests {
+            retry_after: crate::LOGIN_WINDOW,
+        });
+    }
+    state.login_ip_limiter.record(&ip_key, now);
     if users::count(&state.db).await? > 0 {
         return Err(AppError::NotFound);
     }

@@ -43,6 +43,14 @@ pub async fn upload(
     body: Body,
 ) -> Result<(StatusCode, Json<ScreenshotInfo>), ApiError> {
     let Query(params) = query.map_err(|_| ApiError::BadRequest("invalid query parameters"))?;
+    let now = state.clock.now();
+    let limit_key = api_user.user.id.to_string();
+    if state.upload_limiter.is_limited(&limit_key, now) {
+        return Err(ApiError::TooManyRequests {
+            retry_after: crate::UPLOAD_WINDOW,
+        });
+    }
+    state.upload_limiter.record(&limit_key, now);
     let visibility = parse_visibility(params.visibility.as_deref())?;
     let expiry_days = match (visibility, params.expires_in_days.as_deref()) {
         (Visibility::Private, Some(_)) => {
