@@ -75,10 +75,13 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          version="${GITHUB_REF_NAME#client-v}"
+          # The section of this version from client/CHANGELOG.md.
+          awk -v v="## [${version}]" 'index($0, v) == 1 {on=1; next} /^## \[/ {on=0} on' \
+            ../client/CHANGELOG.md > ../notes.md
           if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
             gh release upload "${GITHUB_REF_NAME}" * --clobber
           else
             gh release create "${GITHUB_REF_NAME}" * --draft \
-              --title "SCRN client ${GITHUB_REF_NAME#client-v}" \
-              --notes "Linux packages of the SCRN desktop client. See client/README.md."
+              --title "SCRN client ${version}" --notes-file ../notes.md
           fi

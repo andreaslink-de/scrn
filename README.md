@@ -14,8 +14,9 @@ the desktop client: take a screenshot (Snap), select the relevant area (Crop),
 blur sensitive details (Redact) and add arrows or highlights (Note). The finished
 image is uploaded to your own server and can be shared through a short link.
 
-> **Status:** first release (0.1.0) of the server. The desktop client is
-> not available yet; until then the upload API can be used directly.
+> **Status:** server 0.3.0, desktop client 0.1.0 for Linux (GNOME on
+> Wayland). Windows, more Linux desktops and macOS follow (see
+> [docs/PLAN.md](docs/PLAN.md)).
 
 ## Components
 
@@ -23,8 +24,9 @@ image is uploaded to your own server and can be shared through a short link.
   Docker, stores screenshots, serves public short links and provides a web gallery.
 - **Shared types** (`crates/scrn-proto`): API request and response types used by
   the server and the client.
-- **Desktop client** (`client/`, in development, Linux first): a Tauri app with a
-  tray icon, area selection, an annotation editor and upload via API token. See
+- **Desktop client** (`client/`, Linux first): a Tauri app with a tray icon, area
+  selection on every monitor, an editor for arrows, highlights and blur, and
+  upload via API token. See [Desktop client](#desktop-client) and
   [client/README.md](client/README.md).
 
 Screenshots are private by default. Only public screenshots get a short link, and
@@ -42,6 +44,59 @@ cargo test --workspace
 ```
 
 The implementation plan lives in [docs/PLAN.md](docs/PLAN.md).
+
+## Desktop client
+
+The client is a separate Cargo workspace in `client/` (Tauri 2, Rust and
+a small HTML/JS front end without a build step). Packages for each
+release are attached to the GitHub release `client-vX.Y.Z`.
+
+**Install:** `sudo apt install ./SCRN_<version>_amd64.deb`, or make the
+AppImage executable and start it. Then tray → *Einstellungen …*: server
+address and an API token from the web UI.
+
+**Build from source** (Ubuntu 24.04):
+
+```sh
+# System libraries for Tauri (WebKitGTK, GTK, AppIndicator)
+sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev \
+  libayatana-appindicator3-dev librsvg2-dev libxdo-dev
+cd client
+cargo run                 # start in the tray
+cargo run -- capture      # take a screenshot
+cargo run -- copy-last    # copy the last link
+cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test
+```
+
+**Build the packages:**
+
+```sh
+cargo install tauri-cli --version "~2.12.4" --locked
+cd client
+cargo tauri build --bundles deb,appimage
+# -> target/release/bundle/deb/SCRN_<version>_amd64.deb
+# -> target/release/bundle/appimage/SCRN_<version>_amd64.AppImage
+```
+
+Notes from building and testing on GNOME/Wayland:
+
+- The screenshot comes from the xdg-desktop-portal. GNOME asks for the
+  permission once and flashes the screen on every capture; the flash
+  cannot be turned off from the app.
+- Wayland ignores window positions, so every monitor gets its own
+  overlay, put fullscreen on that monitor through GTK.
+- A tray app has no focused window, and Wayland only lets focused clients
+  set the clipboard. The client therefore owns the X11 clipboard through
+  XWayland, which GNOME passes on to Wayland apps.
+- Tauri's IPC falls back to JSON on WebKitGTK, so raw image bytes arrive
+  as arrays of numbers; editor and app accept both forms.
+- The keyring is reached over D-Bus (Secret Service); its blocking calls
+  run outside the async runtime.
+- The packages are built on Ubuntu 22.04 in CI, so the AppImage also runs
+  on systems with an older glibc. The AppImage bundles WebKitGTK and is
+  about 85 MiB; the `.deb` uses the system libraries and is about 8 MiB.
+- Development results and decisions per step are in
+  [docs/spike-c0.md](docs/spike-c0.md) and [client/README.md](client/README.md).
 
 ## Running with Docker Compose
 
@@ -211,7 +266,7 @@ any other proxy works the same way.
 
 2. Choose the image. Releases are published as
    `ghcr.io/andreaslink-de/scrn:<version>` (and `latest`); set
-   `SCRN_IMAGE=ghcr.io/andreaslink-de/scrn:0.2.0` in `.env` to use one.
+   `SCRN_IMAGE=ghcr.io/andreaslink-de/scrn:0.3.0` in `.env` to use one.
    Without `SCRN_IMAGE`, Compose builds the image from the checkout.
 
 3. Start it: `mkdir -p data && docker compose pull && docker compose up -d`
@@ -337,9 +392,24 @@ after the backup was taken are removed by the maintenance job.
 
 ## Releases
 
-Releases follow [Semantic Versioning](https://semver.org/) and are listed
-in [CHANGELOG.md](CHANGELOG.md). Pushing a tag `vX.Y.Z` that matches the
-version in `Cargo.toml` builds the image and publishes it to GHCR.
+Releases follow [Semantic Versioning](https://semver.org/). Server and
+client have their own versions:
+
+- **Server:** listed in [CHANGELOG.md](CHANGELOG.md). A tag `vX.Y.Z` that
+  matches the version in `Cargo.toml` builds the image and publishes it
+  to GHCR.
+- **Client:** listed in [client/CHANGELOG.md](client/CHANGELOG.md). A tag
+  `client-vX.Y.Z` that matches `client/Cargo.toml` builds the `.deb` and
+  the AppImage and attaches them to a draft release.
+
+## How this project is made
+
+The code, tests and documentation of SCRN were written by
+[Claude Code](https://claude.com/claude-code), Anthropic's AI coding
+assistant, working step by step from [docs/PLAN.md](docs/PLAN.md). The
+maintainer set the goals, decided open questions, tested every step on
+real hardware and reviewed and merged each pull request. Commits made
+this way carry a `Co-Authored-By: Claude` line.
 
 ## Contributing and security
 
