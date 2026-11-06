@@ -7,7 +7,8 @@ the desktop client: take a screenshot (Snap), select the relevant area (Crop),
 blur sensitive details (Redact) and add arrows or highlights (Note). The finished
 image is uploaded to your own server and can be shared through a short link.
 
-> **Status:** early development. Nothing here is ready for production use yet.
+> **Status:** first release (0.1.0) of the server. The desktop client is
+> not available yet; until then the upload API can be used directly.
 
 ## Components
 
@@ -168,7 +169,8 @@ All settings are environment variables, documented in
 | `RUST_LOG` | `info` | Log filter |
 | `SCRN_LOG_FORMAT` | `text` | `text` or `json` |
 
-Compose additionally reads `SCRN_PUBLISH_ADDR` (default `127.0.0.1`),
+Compose additionally reads `SCRN_IMAGE` (image to run, empty builds it),
+`SCRN_PUBLISH_ADDR` (default `127.0.0.1`),
 `SCRN_PUBLISH_PORT` (default `8080`), `SCRN_UID` and `SCRN_GID` (default
 `1000`, must own `./data`).
 
@@ -192,9 +194,21 @@ any other proxy works the same way.
    `SCRN_BASE_URL` is the public address: short links, invitation links and
    passkeys are built from it. Passkeys are bound to its host name.
 
-2. `mkdir -p data && docker compose up -d --build`, then read the setup
-   token with `docker compose logs scrn | grep setup_token` and open
+2. Choose the image. Releases are published as
+   `ghcr.io/andreaslink-de/scrn:<version>` (and `latest`); set
+   `SCRN_IMAGE=ghcr.io/andreaslink-de/scrn:0.1.0` in `.env` to use one.
+   Without `SCRN_IMAGE`, Compose builds the image from the checkout.
+
+3. Start it: `mkdir -p data && docker compose pull && docker compose up -d`
+   (or `docker compose up -d --build` without `SCRN_IMAGE`). Then read the
+   setup token with `docker compose logs scrn | grep setup_token` and open
    `<SCRN_BASE_URL>/setup`.
+
+To update, change the version in `SCRN_IMAGE`, then run
+`docker compose pull && docker compose up -d`. Migrations run
+automatically at startup; take a backup first (see below). If the image
+on GHCR is private, the server needs `docker login ghcr.io` with a
+personal access token that has the `read:packages` scope.
 
 The container runs as an unprivileged user with a read-only root file
 system, no capabilities and `no-new-privileges`. By default the port is only
@@ -293,6 +307,17 @@ docker compose up -d
 Sessions, API tokens, passkeys and short links are part of the database,
 so the gallery and all links work again as before. Files of uploads made
 after the backup was taken are removed by the maintenance job.
+
+## Releases
+
+Releases follow [Semantic Versioning](https://semver.org/) and are listed
+in [CHANGELOG.md](CHANGELOG.md). Pushing a tag `vX.Y.Z` that matches the
+version in `Cargo.toml` builds the image and publishes it to GHCR.
+
+## Contributing and security
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). Please report vulnerabilities
+privately as described in [SECURITY.md](SECURITY.md).
 
 ## License
 

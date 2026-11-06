@@ -18,10 +18,13 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 # --- Runtime stage ---------------------------------------------------------
 FROM debian:trixie-slim
 
-# libssl is needed later by the passkey library; ca-certificates for TLS.
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates libssl3t64 \
-    && rm -rf /var/lib/apt/lists/*
+# The binary only needs the C runtime of the base image: no OpenSSL, and
+# the server makes no outgoing TLS connections, so no CA certificates.
+
+LABEL org.opencontainers.image.title="scrn" \
+      org.opencontainers.image.description="Self-hosted screenshot sharing server" \
+      org.opencontainers.image.source="https://github.com/andreaslink-de/scrn" \
+      org.opencontainers.image.licenses="MIT"
 
 # Unprivileged user. compose.yaml may override the UID/GID so that the
 # bind-mounted ./data directory is writable.
