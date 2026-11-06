@@ -351,10 +351,30 @@ pub struct ExpiryForm {
     expiry: String,
     #[serde(default)]
     custom_date: String,
+    /// Unix seconds of the end of `custom_date` in the browser's time zone,
+    /// set by app.js. Without it the day ends at midnight UTC.
+    #[serde(default)]
+    custom_end: String,
+}
+
+/// Time zones are at most this far from UTC (UTC-12 to UTC+14).
+const MAX_ZONE_OFFSET: i64 = 14 * 3600;
+
+/// The end of the chosen date: the browser's local midnight if it sent a
+/// plausible one, else midnight UTC.
+fn custom_end(form: &ExpiryForm) -> Option<i64> {
+    let utc_end = html::parse_date(&form.custom_date).map(|days| (days + 1) * DAY)?;
+    let local_end = form
+        .custom_end
+        .trim()
+        .parse::<i64>()
+        .ok()
+        .filter(|at| (at - utc_end).abs() <= MAX_ZONE_OFFSET);
+    Some(local_end.unwrap_or(utc_end))
 }
 
 /// `POST /app/shots/{id}/expiry`: never, 1, 7 or 30 days from now, or the
-/// end (UTC) of a chosen date.
+/// end of a chosen date in the browser's time zone.
 pub async fn set_expiry(
     State(state): State<AppState>,
     user: CurrentUser,
@@ -375,8 +395,8 @@ pub async fn set_expiry(
     let now = state.clock.now();
     let expires_at = match form.expiry.as_str() {
         "custom" => {
-            let end = html::parse_date(&form.custom_date).map(|days| (days + 1) * DAY);
-            match end.filter(|at| *at > now && *at <= now + (MAX_EXPIRY_DAYS + 1) * DAY) {
+            let latest = now + (MAX_EXPIRY_DAYS + 1) * DAY + MAX_ZONE_OFFSET;
+            match custom_end(&form).filter(|at| *at > now && *at <= latest) {
                 Some(at) => Some(at),
                 None => {
                     return render_detail(

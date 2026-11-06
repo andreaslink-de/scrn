@@ -76,8 +76,8 @@
 <button type="submit" class="secondary small">{{ page.t("passkey.rename") }}</button>
 </form>
 </td>
-<td data-label="{{ page.t("admin.col.created") }}">{{ page.time(passkey.created_at) }}</td>
-<td data-label="{{ page.t("tokens.col.last_used") }}">{% match passkey.last_used_at %}{% when Some(at) %}{{ page.time(at) }}{% when None %}{{ page.t("tokens.never") }}{% endmatch %}</td>
+<td data-label="{{ page.t("admin.col.created") }}"><time datetime="{{ page.iso(passkey.created_at) }}">{{ page.time(passkey.created_at) }}</time></td>
+<td data-label="{{ page.t("tokens.col.last_used") }}">{% match passkey.last_used_at %}{% when Some(at) %}<time datetime="{{ page.iso(at) }}">{{ page.time(at) }}</time>{% when None %}{{ page.t("tokens.never") }}{% endmatch %}</td>
 <td data-label="{{ page.t("admin.col.actions") }}"><form method="post" action="/app/passkeys/{{ passkey.id }}/delete"><input type="hidden" name="csrf" value="{{ csrf }}"><button type="submit" class="danger small">{{ page.t("passkey.delete") }}</button></form></td>
 </tr>
 {% endfor %}
@@ -115,8 +115,8 @@
 {% for token in tokens %}
 <tr>
 <td data-label="{{ page.t("tokens.col.name") }}">{{ token.name }}</td>
-<td data-label="{{ page.t("admin.col.created") }}">{{ page.time(token.created_at) }}</td>
-<td data-label="{{ page.t("tokens.col.last_used") }}">{% match token.last_used_at %}{% when Some(at) %}{{ page.time(at) }}{% when None %}{{ page.t("tokens.never") }}{% endmatch %}</td>
+<td data-label="{{ page.t("admin.col.created") }}"><time datetime="{{ page.iso(token.created_at) }}">{{ page.time(token.created_at) }}</time></td>
+<td data-label="{{ page.t("tokens.col.last_used") }}">{% match token.last_used_at %}{% when Some(at) %}<time datetime="{{ page.iso(at) }}">{{ page.time(at) }}</time>{% when None %}{{ page.t("tokens.never") }}{% endmatch %}</td>
 <td data-label="{{ page.t("admin.col.status") }}">{% if token.revoked_at.is_some() %}{{ page.t("status.revoked") }}{% else %}{{ page.t("status.active") }}{% endif %}</td>
 <td data-label="{{ page.t("admin.col.actions") }}">{% if token.revoked_at.is_none() %}<form method="post" action="/app/tokens/{{ token.id }}/revoke"><input type="hidden" name="csrf" value="{{ csrf }}"><button type="submit" class="danger small">{{ page.t("tokens.revoke") }}</button></form>{% endif %}</td>
 </tr>

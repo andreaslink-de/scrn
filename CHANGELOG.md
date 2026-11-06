@@ -16,6 +16,9 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- Times in the web UI are shown in the browser's time zone (detected
+  automatically, UTC without JavaScript). A chosen expiry date ends at
+  local midnight.
 - Screenshot files are stored per user in `files/<user id>/`. Files of the
   earlier flat layout are moved there at startup.
 
