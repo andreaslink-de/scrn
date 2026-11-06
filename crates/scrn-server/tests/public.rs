@@ -271,3 +271,56 @@ async fn clients_behind_a_trusted_proxy_are_limited_separately() {
         .push(("x-forwarded-for".into(), "198.51.100.11".into()));
     assert_eq!(second.get(&path).await.status, StatusCode::OK);
 }
+
+#[tokio::test]
+async fn deliveries_of_a_link_are_counted() {
+    let (server, user, mut api) = setup().await;
+    let info = upload_info(&mut api, "?visibility=public").await;
+    let other = upload_info(&mut api, "?visibility=public").await;
+    let path = short_path(&info);
+    let views = |list: &str, id: &str| -> u64 {
+        let list: scrn_proto::ScreenshotList = serde_json::from_str(list).unwrap();
+        list.screenshots.iter().find(|s| s.id == id).unwrap().views
+    };
+    assert_eq!(
+        views(&api.get("/api/v1/screenshots").await.body, &info.id),
+        0
+    );
+
+    let mut visitor = server.client("203.0.113.7");
+    let first = visitor.get(&path).await;
+    assert_eq!(first.status, StatusCode::OK);
+    assert_eq!(
+        visitor.get(&format!("{path}.png")).await.status,
+        StatusCode::OK
+    );
+    // A revalidation shows the image again and counts.
+    let etag = first.headers["etag"].to_str().unwrap().to_owned();
+    visitor.headers.push(("if-none-match".into(), etag));
+    assert_eq!(visitor.get(&path).await.status, StatusCode::NOT_MODIFIED);
+    // HEAD and unknown IDs do not count.
+    let head = server
+        .client("203.0.113.8")
+        .send_raw("HEAD", &path, None, Vec::new())
+        .await;
+    assert_eq!(head.status, StatusCode::OK);
+    visitor.get("/Zzzzzzzz").await;
+
+    let list = api.get("/api/v1/screenshots").await.body;
+    assert_eq!(views(&list, &info.id), 3);
+    assert_eq!(views(&list, &other.id), 0);
+
+    // A missing file is a 404 and does not count either.
+    let id = Uuid::parse_str(&info.id).unwrap();
+    std::fs::remove_file(storage::image_path(
+        &server.state.config.files_dir(),
+        user.id,
+        id,
+    ))
+    .unwrap();
+    server.client("203.0.113.9").get(&path).await;
+    assert_eq!(
+        views(&api.get("/api/v1/screenshots").await.body, &info.id),
+        3
+    );
+}

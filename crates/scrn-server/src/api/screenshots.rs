@@ -246,6 +246,7 @@ fn info(state: &AppState, shot: &Screenshot) -> ScreenshotInfo {
         width: u32::try_from(shot.width).unwrap_or(0),
         height: u32::try_from(shot.height).unwrap_or(0),
         created_at: shot.created_at,
+        views: u64::try_from(shot.views).unwrap_or(0),
     }
 }
 

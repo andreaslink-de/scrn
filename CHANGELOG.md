@@ -8,6 +8,8 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- View counter for public links, shown in the gallery, on the detail page
+  and as `views` in the API.
 - Backup download in the administration: a tar archive with a consistent
   database snapshot and all screenshot files, streamed without storing a
   copy on the server.
