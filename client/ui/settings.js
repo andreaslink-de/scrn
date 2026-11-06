@@ -53,6 +53,11 @@ const fill = (view) => {
   tokenState.textContent = t(view.has_token ? "settings.token_stored" : "settings.token_none");
   forgetButton.hidden = !view.has_token;
   insecure.hidden = !isInsecure(s.server_url);
+  document.getElementById("shortcut-field").hidden = !view.shortcut_supported;
+  document.getElementById("shortcut").value = s.shortcut;
+  document.getElementById("shortcut-error").textContent = view.shortcut_error
+    ? t("settings.shortcut_failed", view.shortcut_error)
+    : "";
   document.getElementById("files").textContent = t("settings.files", view.config_path, view.log_path);
   updateExpiry();
 };
@@ -63,6 +68,7 @@ const collect = () => ({
   expires_in_days: expiry.value === "" ? null : Number(expiry.value),
   keep_copy: document.getElementById("keep_copy").checked,
   autostart: document.getElementById("autostart").checked,
+  shortcut: document.getElementById("shortcut").value,
 });
 
 serverUrl.addEventListener("input", () => {

@@ -5,6 +5,14 @@ format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Windows 10 and 11: capture of all monitors with xcap, an overlay on
+  every monitor, Print Screen (or another shortcut from the settings) as
+  global shortcut, autostart through the Run key of the user, tray icon
+  matching the taskbar theme, and an NSIS installer for the current user
+  (no administrator rights).
+
 ## [0.1.0] - 2026-11-06
 
 First release of the desktop client, for Linux with GNOME on Wayland

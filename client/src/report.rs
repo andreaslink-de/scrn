@@ -1,18 +1,13 @@
 //! The client log: what the client observed on this desktop, appended to
-//! `$XDG_STATE_HOME/scrn/client.log` (default `~/.local/state/scrn`) and
-//! printed to stderr. It never contains image data.
+//! `client.log` (see [`crate::paths`]) and printed to stderr. It never
+//! contains image data, tokens or links.
 
 use std::io::Write;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub fn path() -> Option<PathBuf> {
-    let base = std::env::var_os("XDG_STATE_HOME")
-        .map(PathBuf::from)
-        .or_else(|| {
-            std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".local/state"))
-        })?;
-    Some(base.join("scrn").join("client.log"))
+    crate::paths::log_file()
 }
 
 /// Writes one line to the report.
@@ -41,8 +36,9 @@ pub fn note(line: impl AsRef<str>) {
 pub fn environment() {
     let var = |name: &str| std::env::var(name).unwrap_or_else(|_| "-".to_owned());
     note(format!(
-        "start: scrn {} session={} desktop={} wayland_display={} gdk_backend={} scale_env={}",
+        "start: scrn {} os={} session={} desktop={} wayland_display={} gdk_backend={} scale_env={}",
         env!("CARGO_PKG_VERSION"),
+        std::env::consts::OS,
         var("XDG_SESSION_TYPE"),
         var("XDG_CURRENT_DESKTOP"),
         var("WAYLAND_DISPLAY"),

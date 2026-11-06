@@ -73,6 +73,31 @@ jobs:
       - name: Run tests
         run: cargo test
 
+  client-windows:
+    name: client on Windows (clippy, test)
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: client
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: client
+
+      - name: Run clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Run tests
+        run: cargo test
+
   dependencies:
     name: cargo deny (advisories, licenses, sources)
     runs-on: ubuntu-latest
