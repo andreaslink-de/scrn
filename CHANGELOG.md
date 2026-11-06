@@ -6,6 +6,8 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-06
+
 ### Added
 
 - The footer shows the server version and links to the source repository.
@@ -49,5 +51,6 @@ First release of the SCRN server.
 - Consistent backups while the server keeps running: a download in the
   administration, `scripts/backup.sh` and `scrn-server backup`.
 
-[Unreleased]: https://github.com/andreaslink-de/scrn/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/andreaslink-de/scrn/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/andreaslink-de/scrn/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/andreaslink-de/scrn/releases/tag/v0.1.0

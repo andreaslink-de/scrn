@@ -203,7 +203,7 @@ any other proxy works the same way.
 
 2. Choose the image. Releases are published as
    `ghcr.io/andreaslink-de/scrn:<version>` (and `latest`); set
-   `SCRN_IMAGE=ghcr.io/andreaslink-de/scrn:0.1.0` in `.env` to use one.
+   `SCRN_IMAGE=ghcr.io/andreaslink-de/scrn:0.2.0` in `.env` to use one.
    Without `SCRN_IMAGE`, Compose builds the image from the checkout.
 
 3. Start it: `mkdir -p data && docker compose pull && docker compose up -d`
