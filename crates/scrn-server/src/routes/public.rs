@@ -68,7 +68,7 @@ pub async fn show(
     let mut response = if not_modified {
         StatusCode::NOT_MODIFIED.into_response()
     } else {
-        let path = storage::image_path(&state.config.files_dir(), shot.id);
+        let path = storage::image_path(&state.config.files_dir(), shot.user_id, shot.id);
         let data = match tokio::fs::read(&path).await {
             Ok(data) => data,
             Err(err) => {

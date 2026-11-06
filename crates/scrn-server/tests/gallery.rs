@@ -333,11 +333,11 @@ async fn owner_gets_image_and_thumbnail() {
     for (path, file) in [
         (
             format!("/app/shots/{id}/image"),
-            storage::image_path(&files, id),
+            storage::image_path(&files, s.user.id, id),
         ),
         (
             format!("/app/shots/{id}/thumb"),
-            storage::thumb_path(&files, id),
+            storage::thumb_path(&files, s.user.id, id),
         ),
     ] {
         let response = s.browser.get(&path).await;
@@ -365,7 +365,7 @@ async fn delete_removes_row_and_files() {
         .post(&format!("{detail}/delete"), &[("csrf", "wrong")])
         .await;
     assert_eq!(response.status, StatusCode::FORBIDDEN);
-    assert!(storage::image_path(&files, id).exists());
+    assert!(storage::image_path(&files, s.user.id, id).exists());
 
     s.browser
         .submit(&detail, &format!("{detail}/delete"), &[])
@@ -377,8 +377,8 @@ async fn delete_removes_row_and_files() {
             .unwrap()
             .is_none()
     );
-    assert!(!storage::image_path(&files, id).exists());
-    assert!(!storage::thumb_path(&files, id).exists());
+    assert!(!storage::image_path(&files, s.user.id, id).exists());
+    assert!(!storage::thumb_path(&files, s.user.id, id).exists());
     assert_eq!(s.browser.get(&detail).await.status, StatusCode::NOT_FOUND);
     let mut visitor = s.server.client("203.0.113.1");
     assert_eq!(

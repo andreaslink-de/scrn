@@ -305,13 +305,13 @@ pub async fn expire_due(db: impl SqliteExecutor<'_>, now: i64) -> Result<u64, Re
     Ok(result.rows_affected())
 }
 
-/// True if a screenshot with this ID exists, whoever owns it.
-pub async fn exists(db: impl SqliteExecutor<'_>, id: Uuid) -> Result<bool, RepoError> {
-    let row: Option<(i64,)> = sqlx::query_as("SELECT 1 FROM screenshots WHERE id = ?")
+/// The owner of a screenshot, or `None` if no screenshot has this ID.
+pub async fn owner(db: impl SqliteExecutor<'_>, id: Uuid) -> Result<Option<i64>, RepoError> {
+    let row: Option<(i64,)> = sqlx::query_as("SELECT user_id FROM screenshots WHERE id = ?")
         .bind(id.to_string())
         .fetch_optional(db)
         .await?;
-    Ok(row.is_some())
+    Ok(row.map(|(user_id,)| user_id))
 }
 
 /// Storage used by a user in bytes: images plus thumbnails.
@@ -429,8 +429,8 @@ mod tests {
         assert_eq!(get(private.id).await.unwrap().unwrap().public, None);
         assert_eq!(get_by_short_id(&pool, "dueeeeee").await.unwrap(), None);
         // The image itself is kept.
-        assert!(exists(&pool, due.id).await.unwrap());
-        assert!(!exists(&pool, Uuid::new_v4()).await.unwrap());
+        assert_eq!(owner(&pool, due.id).await.unwrap(), Some(due.user_id));
+        assert_eq!(owner(&pool, Uuid::new_v4()).await.unwrap(), None);
 
         assert_eq!(expire_due(&pool, 10_000).await.unwrap(), 1);
         assert!(get(never.id).await.unwrap().unwrap().public.is_some());

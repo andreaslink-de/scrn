@@ -93,13 +93,13 @@ pub async fn upload(
 
     let id = Uuid::new_v4();
     let files_dir = state.config.files_dir();
-    storage::write(&files_dir, id, &processed.png, &processed.thumb)
+    storage::write(&files_dir, user.id, id, &processed.png, &processed.thumb)
         .await
         .map_err(|err| ApiError::Internal(format!("writing screenshot files failed: {err}")))?;
     let shot = match store(&state, user.id, id, &processed, visibility, expiry_days).await {
         Ok(shot) => shot,
         Err(err) => {
-            if let Err(remove_err) = storage::remove(&files_dir, id).await {
+            if let Err(remove_err) = storage::remove(&files_dir, user.id, id).await {
                 tracing::warn!(screenshot_id = %id, error = %remove_err, "removing files of a failed upload failed");
             }
             return Err(err);

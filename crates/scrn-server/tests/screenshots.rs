@@ -69,10 +69,18 @@ async fn setup() -> (TestServer, User, Client) {
     (server, user, api)
 }
 
+/// Number of files below the files directory, in all user directories.
 fn stored_files(server: &TestServer) -> usize {
-    std::fs::read_dir(server.state.config.files_dir())
-        .unwrap()
-        .count()
+    fn count(dir: &std::path::Path) -> usize {
+        std::fs::read_dir(dir)
+            .unwrap()
+            .map(|entry| {
+                let path = entry.unwrap().path();
+                if path.is_dir() { count(&path) } else { 1 }
+            })
+            .sum()
+    }
+    count(&server.state.config.files_dir())
 }
 
 async fn me(api: &mut Client) -> MeResponse {
@@ -83,7 +91,7 @@ async fn me(api: &mut Client) -> MeResponse {
 
 #[tokio::test]
 async fn public_upload_returns_a_short_url_and_stores_clean_files() {
-    let (server, _, mut api) = setup().await;
+    let (server, user, mut api) = setup().await;
     let original = png_image(640, 360);
     let info = created(&upload(&mut api, "?visibility=public", original.clone()).await);
 
@@ -98,11 +106,11 @@ async fn public_upload_returns_a_short_url_and_stores_clean_files() {
     // The stored file has the same pixels but none of the metadata.
     let id = Uuid::parse_str(&info.id).unwrap();
     let files = server.state.config.files_dir();
-    let stored = std::fs::read(storage::image_path(&files, id)).unwrap();
+    let stored = std::fs::read(storage::image_path(&files, user.id, id)).unwrap();
     assert!(!stored.windows(15).any(|w| w == b"secret-metadata"));
     assert!(!stored.windows(4).any(|w| w == b"tEXt"));
     assert_eq!(decode_pixels(&stored), decode_pixels(&original));
-    let thumb = std::fs::read(storage::thumb_path(&files, id)).unwrap();
+    let thumb = std::fs::read(storage::thumb_path(&files, user.id, id)).unwrap();
     let (tw, th, _) = decode_pixels(&thumb);
     assert_eq!((tw, th), (480, 270));
 
