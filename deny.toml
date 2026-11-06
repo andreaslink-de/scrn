@@ -1,0 +1,51 @@
+# cargo-deny configuration: security advisories, licenses, banned crates
+# and allowed sources. Run with `cargo deny check`; CI runs it on every
+# push and weekly.
+
+[graph]
+all-features = false
+
+[advisories]
+# Fail on vulnerabilities and on yanked versions; unmaintained crates are
+# reported for the whole graph.
+version = 2
+yanked = "deny"
+ignore = [
+    # Marvin attack: timing side channel in RSA private-key operations
+    # (decryption, signing). rsa comes in through webauthn-rs, which only
+    # verifies RS256 signatures with public keys of passkeys; the server
+    # never holds an RSA private key. No fixed version exists yet.
+    { id = "RUSTSEC-2023-0071", reason = "only public-key verification is used (webauthn-rs), not affected" },
+]
+
+[licenses]
+version = 2
+# Licenses compatible with distributing SCRN under MIT.
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-1-Clause",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "BSL-1.0",
+    "Unicode-3.0",
+    "Unlicense",
+    "Zlib",
+    "0BSD",
+    # File-level copyleft (webauthn-rs, crypto-glue). Using the crates
+    # unmodified only requires keeping their license notices.
+    "MPL-2.0",
+]
+confidence-threshold = 0.9
+
+[bans]
+multiple-versions = "allow"
+wildcards = "deny"
+# Workspace path dependencies have no version requirement.
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

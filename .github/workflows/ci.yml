@@ -4,6 +4,9 @@ on:
   push:
     branches: [main]
   pull_request:
+  schedule:
+    # Weekly, so new advisories for existing dependencies show up.
+    - cron: "17 5 * * 1"
 
 permissions:
   contents: read
@@ -34,3 +37,14 @@ jobs:
 
       - name: Run tests
         run: cargo test --workspace
+
+  dependencies:
+    name: cargo deny (advisories, licenses, sources)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check dependencies
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check

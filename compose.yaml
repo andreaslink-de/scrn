@@ -1,7 +1,11 @@
 services:
   scrn:
+    # Without SCRN_IMAGE the image is built from this checkout
+    # (`docker compose up --build`). On a server, set SCRN_IMAGE to a
+    # published release, e.g. ghcr.io/andreaslink-de/scrn:0.1.0, and run
+    # `docker compose pull && docker compose up -d`.
+    image: ${SCRN_IMAGE:-scrn:local}
     build: .
-    image: scrn:local
     restart: unless-stopped
     env_file:
       - path: .env
