@@ -246,6 +246,8 @@ Create sqlx migrations for users, invites, sessions, api_tokens, screenshots and
 Implement authentication. On first start with no users, the server prints a one-time setup token to the log only. The page /setup creates the admin account with that token (username plus password of at least 12 characters) and is locked afterwards. Implement login and logout with argon2id, random session IDs (store only the hash), cookies HttpOnly, Secure (configurable), SameSite=Lax, CSRF tokens on all POST forms, and rate limiting on login per IP and per username with identical responses for unknown users. The admin can create invitations (link with expiry, single use) and users can register only via /invite/<token>. The admin can disable users. Keep the HTML plain and unstyled, styling comes later. Tests: setup flow, login, wrong password, single-use invitation, disabled user cannot log in.
 ```
 
+**Hinweis (Entscheidung in S3):** Damit keine UI-Texte im Code stehen, legt S3 bereits die Kataloge `locales/de.txt` und `locales/en.txt` samt Test auf gleiche Schlüssel an. S7a ergänzt die Sprachauswahl (Einstellung, Cookie, Accept-Language), die Template-Engine und das Design.
+
 **Abnahme:**
 
 - Manueller Durchlauf: Setup-Token aus dem Log holen, Admin anlegen, Einladung erzeugen, zweiten User registrieren.

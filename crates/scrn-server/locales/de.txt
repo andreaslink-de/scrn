@@ -1,0 +1,73 @@
+# German UI catalog (default language). Keep the keys in sync with en.txt.
+
+app.name = SCRN
+
+nav.home = Übersicht
+nav.admin = Verwaltung
+nav.logout = Abmelden
+
+field.username = Benutzername
+field.username_hint = 1 bis 64 Zeichen: Buchstaben, Ziffern, Punkt, Bindestrich und Unterstrich.
+field.password = Passwort
+field.password_confirm = Passwort wiederholen
+field.password_hint = Mindestens {min} Zeichen.
+
+setup.title = Einrichtung
+setup.intro = Lege das Administratorkonto an. Den einmaligen Einrichtungscode findest du im Log des Servers.
+setup.token = Einrichtungscode
+setup.submit = Administrator anlegen
+
+login.title = Anmelden
+login.submit = Anmelden
+
+invite.title = Registrieren
+invite.intro = Du wurdest zu SCRN eingeladen. Wähle einen Benutzernamen und ein Passwort.
+invite.submit = Konto anlegen
+
+home.title = Übersicht
+home.signed_in_as = Angemeldet als {username}.
+
+admin.title = Verwaltung
+admin.users = Benutzer
+admin.invites = Einladungen
+admin.col.username = Benutzername
+admin.col.role = Rolle
+admin.col.status = Status
+admin.col.created = Erstellt
+admin.col.expires = Läuft ab
+admin.col.actions = Aktionen
+admin.you = (du)
+admin.disable = Deaktivieren
+admin.enable = Aktivieren
+admin.invite.create = Einladung erstellen
+admin.invite.days = Gültig für (Tage, 1 bis 30)
+admin.invite.revoke = Widerrufen
+admin.invite.none = Noch keine Einladungen.
+admin.invite.created = Einladungslink erstellt. Er wird nur dieses eine Mal angezeigt:
+
+role.admin = Administrator
+role.user = Benutzer
+status.active = Aktiv
+status.disabled = Deaktiviert
+invite.status.open = Offen
+invite.status.used = Benutzt
+invite.status.expired = Abgelaufen
+
+error.title = Fehler
+error.back = Zur Startseite
+error.not_found = Die Seite wurde nicht gefunden.
+error.forbidden = Dafür fehlt dir die Berechtigung.
+error.bad_request = Die Anfrage ist ungültig.
+error.csrf = Das Formular ist abgelaufen. Lade die Seite neu und versuche es noch einmal.
+error.internal = Ein interner Fehler ist aufgetreten.
+error.too_many_attempts = Zu viele Versuche. Bitte warte einige Minuten.
+error.login_failed = Benutzername oder Passwort ist falsch.
+error.username_invalid = Der Benutzername ist ungültig.
+error.username_taken = Dieser Benutzername ist bereits vergeben.
+error.password_too_short = Das Passwort muss mindestens {min} Zeichen lang sein.
+error.password_too_long = Das Passwort darf höchstens {max} Zeichen lang sein.
+error.password_mismatch = Die Passwörter stimmen nicht überein.
+error.setup_token_invalid = Der Einrichtungscode ist ungültig.
+error.invite_invalid = Diese Einladung ist ungültig, abgelaufen oder wurde bereits benutzt.
+error.invite_days = Die Gültigkeit muss zwischen 1 und 30 Tagen liegen.
+error.cannot_disable_self = Du kannst dein eigenes Konto nicht deaktivieren.

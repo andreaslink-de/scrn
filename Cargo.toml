@@ -16,3 +16,14 @@ unsafe_code = "forbid"
 [workspace.lints.clippy]
 unwrap_used = "warn"
 expect_used = "warn"
+
+# Password hashing is far too slow without optimizations, which makes the
+# test suite crawl. Optimize the crypto crates in dev builds as well.
+[profile.dev.package.argon2]
+opt-level = 3
+
+[profile.dev.package.blake2]
+opt-level = 3
+
+[profile.dev.package.sha2]
+opt-level = 3
