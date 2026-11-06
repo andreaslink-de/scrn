@@ -10,8 +10,8 @@
   --border: #323844;
   --text: #e6e8eb;
   --muted: #a3a9b3;
-  --accent: #7aa2ff;
-  --accent-text: #0b0d12;
+  --accent: #34e58c;
+  --accent-text: #0b1f16;
   --danger: #ff8a80;
   --danger-bg: #3a1d1c;
   --ok: #7ddc9b;
@@ -27,7 +27,8 @@
   --border: #c9ced6;
   --text: #15181d;
   --muted: #4f5661;
-  --accent: #2453c7;
+  /* The darker brand green: #0e9f58 would miss 4.5:1 on white. */
+  --accent: #0a7a44;
   --accent-text: #ffffff;
   --danger: #b3261e;
   --danger-bg: #fbe9e7;
