@@ -1,0 +1,58 @@
+# cargo-deny configuration of the desktop client, based on the one of the
+# server (../deny.toml). Run with `cargo deny check` in this directory; CI
+# runs it on every push and weekly.
+
+[graph]
+all-features = false
+
+[advisories]
+# Fail on vulnerabilities and on yanked versions; unmaintained crates are
+# reported for the whole graph.
+version = 2
+yanked = "deny"
+ignore = [
+    # Unmaintained crates the client gets through Tauri and zbus. They are
+    # not vulnerabilities; they go away with upstream updates (gtk-rs 3 ->
+    # gtk4 in Tauri, zbus 6 in all D-Bus crates).
+    { id = "RUSTSEC-2024-0370", reason = "proc-macro-error, build-time only, through glib-macros (gtk-rs 3, Tauri on Linux)" },
+    { id = "RUSTSEC-2026-0370", reason = "zvariant 5, through zbus 5 (single-instance, keyring, notifications)" },
+    { id = "RUSTSEC-2026-0371", reason = "zbus_names 3, through zbus 5" },
+    { id = "RUSTSEC-2026-0372", reason = "zvariant_derive 5, through zbus 5" },
+]
+
+[licenses]
+version = 2
+# Licenses compatible with distributing SCRN under MIT.
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-1-Clause",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "BSL-1.0",
+    "Unicode-3.0",
+    "Unlicense",
+    "Zlib",
+    "0BSD",
+    # File-level copyleft (webauthn-rs, crypto-glue). Using the crates
+    # unmodified only requires keeping their license notices.
+    "MPL-2.0",
+    # rustls, webpki and aws-lc-rs (reqwest's TLS stack); ISC is a
+    # permissive license like MIT.
+    "ISC",
+    # The CA certificate list of webpki-root-certs (data, permissive).
+    "CDLA-Permissive-2.0",
+]
+confidence-threshold = 0.9
+
+[bans]
+multiple-versions = "allow"
+wildcards = "deny"
+# Workspace path dependencies have no version requirement.
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
