@@ -1,5 +1,7 @@
 # Rust build output
 /target/
+/client/target/
+/client/gen/
 **/*.rs.bk
 
 # Local configuration and secrets

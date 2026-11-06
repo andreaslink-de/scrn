@@ -1,6 +1,9 @@
 [workspace]
 resolver = "3"
 members = ["crates/scrn-proto", "crates/scrn-server"]
+# The desktop client is a separate workspace: it needs WebKitGTK and other
+# system libraries that the server build and its Docker image must not.
+exclude = ["client"]
 
 [workspace.package]
 version = "0.2.0"

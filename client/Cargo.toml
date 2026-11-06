@@ -1,0 +1,40 @@
+[package]
+name = "scrn-client"
+description = "SCRN desktop client (C0 spike: tray, portal capture, area selection)"
+version = "0.0.0"
+edition = "2024"
+license = "MIT"
+authors = ["Andreas Link"]
+repository = "https://github.com/andreaslink-de/scrn"
+publish = false
+
+# A workspace of its own, see the root Cargo.toml.
+[workspace]
+
+[[bin]]
+name = "scrn"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2.7.4", features = [] }
+
+[dependencies]
+# Screenshot portal (xdg-desktop-portal) over D-Bus, pure Rust.
+ashpd = { version = "0.14.0", default-features = false, features = ["tokio", "screenshot"] }
+# Already pulled in by Tauri; needed to put each overlay fullscreen on its
+# own monitor (Wayland ignores window positions).
+gtk = "0.18.2"
+png = "0.18.1"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1"
+tauri = { version = "2.12.5", features = ["tray-icon", "image-png"] }
+tauri-plugin-single-instance = "2.5.5"
+thiserror = "2.0.21"
+tokio = { version = "1.54.1", features = ["fs", "time"] }
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+unwrap_used = "warn"
+expect_used = "warn"
