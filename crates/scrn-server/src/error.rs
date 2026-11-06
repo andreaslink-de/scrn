@@ -1,6 +1,7 @@
 //! Typed errors of request handlers and their HTTP responses.
 
-use axum::http::StatusCode;
+use axum::http::header::RETRY_AFTER;
+use axum::http::{HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Redirect, Response};
 
 use crate::crypto::CryptoError;
@@ -20,6 +21,8 @@ pub enum AppError {
     BadRequest,
     #[error("CSRF token missing or invalid")]
     Csrf,
+    #[error("too many requests")]
+    TooManyRequests { retry_after: i64 },
     #[error("login required")]
     LoginRequired,
     #[error("internal error: {0}")]
@@ -58,6 +61,17 @@ impl IntoResponse for AppError {
             Self::Forbidden => (StatusCode::FORBIDDEN, "error.forbidden"),
             Self::BadRequest => (StatusCode::BAD_REQUEST, "error.bad_request"),
             Self::Csrf => (StatusCode::FORBIDDEN, "error.csrf"),
+            Self::TooManyRequests { retry_after } => {
+                let mut response = html::error_page(
+                    DEFAULT_LANGUAGE,
+                    StatusCode::TOO_MANY_REQUESTS,
+                    "error.too_many_requests",
+                );
+                if let Ok(value) = HeaderValue::from_str(&retry_after.to_string()) {
+                    response.headers_mut().insert(RETRY_AFTER, value);
+                }
+                return response;
+            }
             Self::Internal(detail) => {
                 tracing::error!(error = %detail, "request failed");
                 (StatusCode::INTERNAL_SERVER_ERROR, "error.internal")

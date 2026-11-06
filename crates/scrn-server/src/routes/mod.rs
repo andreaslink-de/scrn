@@ -5,6 +5,7 @@ mod health;
 mod home;
 mod invite;
 mod login;
+mod public;
 mod setup;
 mod tokens;
 
@@ -13,6 +14,8 @@ use axum::http::HeaderValue;
 use axum::http::header::SET_COOKIE;
 use axum::response::Response;
 use axum::routing::{get, post};
+
+pub use public::{MAX_CACHE_SECONDS, PUBLIC_REQUESTS_PER_IP, PUBLIC_WINDOW};
 
 use crate::AppState;
 use crate::error::AppError;
@@ -34,6 +37,8 @@ pub fn router(state: AppState) -> Router {
         .route("/admin/invites/{id}/delete", post(admin::delete_invite))
         .route("/admin/users/{id}/disable", post(admin::disable_user))
         .route("/admin/users/{id}/enable", post(admin::enable_user))
+        // Fixed routes always win over this capture in axum's router.
+        .route("/{name}", get(public::show))
         .nest(scrn_proto::API_PREFIX, crate::api::router(state.clone()))
         .fallback(not_found)
         .with_state(state)

@@ -6,30 +6,13 @@
 mod common;
 
 use axum::http::StatusCode;
-use common::{Client, START, TestResponse, TestServer};
-use png::{BitDepth, ColorType};
+use common::{Client, START, TestResponse, TestServer, png_image, upload};
 use scrn_proto::{ApiErrorBody, MeResponse, ScreenshotInfo, ScreenshotList, Visibility};
 use scrn_server::repo::users::{self, Role, User};
 use scrn_server::{short_id, storage};
 use uuid::Uuid;
 
 const DAY: i64 = 86_400;
-
-/// An RGB test image with a text chunk that must not survive the upload.
-fn png_image(width: u32, height: u32) -> Vec<u8> {
-    let pixels: Vec<u8> = (0..width * height * 3).map(|i| (i % 251) as u8).collect();
-    let mut out = Vec::new();
-    let mut encoder = png::Encoder::new(&mut out, width, height);
-    encoder.set_color(ColorType::Rgb);
-    encoder.set_depth(BitDepth::Eight);
-    encoder
-        .add_text_chunk("Comment".into(), "secret-metadata".into())
-        .unwrap();
-    let mut writer = encoder.write_header().unwrap();
-    writer.write_image_data(&pixels).unwrap();
-    writer.finish().unwrap();
-    out
-}
 
 fn decode_pixels(data: &[u8]) -> (u32, u32, Vec<u8>) {
     let mut reader = png::Decoder::new(std::io::Cursor::new(data))
@@ -67,16 +50,6 @@ fn png_header_only(width: u32, height: u32) -> Vec<u8> {
         out.extend_from_slice(&(!crc).to_be_bytes());
     }
     out
-}
-
-async fn upload(api: &mut Client, query: &str, body: Vec<u8>) -> TestResponse {
-    api.send_raw(
-        "POST",
-        &format!("/api/v1/screenshots{query}"),
-        Some("image/png"),
-        body,
-    )
-    .await
 }
 
 fn created(response: &TestResponse) -> ScreenshotInfo {
