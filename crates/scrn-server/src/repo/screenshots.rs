@@ -291,6 +291,29 @@ pub async fn delete_for_user(
     Ok(result.rows_affected() == 1)
 }
 
+/// Turns every public screenshot whose link has expired at `now` into a
+/// private one: the short ID and the expiry are deleted, the image stays.
+/// Returns the number of screenshots changed.
+pub async fn expire_due(db: impl SqliteExecutor<'_>, now: i64) -> Result<u64, RepoError> {
+    let result = sqlx::query(
+        "UPDATE screenshots SET visibility = 'private', short_id = NULL, expires_at = NULL \
+         WHERE visibility = 'public' AND expires_at IS NOT NULL AND expires_at <= ?",
+    )
+    .bind(now)
+    .execute(db)
+    .await?;
+    Ok(result.rows_affected())
+}
+
+/// True if a screenshot with this ID exists, whoever owns it.
+pub async fn exists(db: impl SqliteExecutor<'_>, id: Uuid) -> Result<bool, RepoError> {
+    let row: Option<(i64,)> = sqlx::query_as("SELECT 1 FROM screenshots WHERE id = ?")
+        .bind(id.to_string())
+        .fetch_optional(db)
+        .await?;
+    Ok(row.is_some())
+}
+
 /// Storage used by a user in bytes: images plus thumbnails.
 pub async fn usage_for_user(db: impl SqliteExecutor<'_>, user_id: i64) -> Result<i64, RepoError> {
     let (used,): (i64,) = sqlx::query_as(
@@ -380,6 +403,37 @@ mod tests {
                 .await
                 .unwrap()
         );
+    }
+
+    #[tokio::test]
+    async fn expire_due_only_touches_expired_public_links() {
+        let (_dir, pool) = test_util::pool().await;
+        let user = test_util::user(&pool, "alice").await;
+        let due = insert(&pool, &new(user.id, Some(link("dueeeeee", Some(200)))), 100)
+            .await
+            .unwrap();
+        let later = insert(&pool, &new(user.id, Some(link("laterrrr", Some(300)))), 100)
+            .await
+            .unwrap();
+        let never = insert(&pool, &new(user.id, Some(link("neverrrr", None))), 100)
+            .await
+            .unwrap();
+        let private = insert(&pool, &new(user.id, None), 100).await.unwrap();
+
+        assert_eq!(expire_due(&pool, 199).await.unwrap(), 0);
+        assert_eq!(expire_due(&pool, 200).await.unwrap(), 1);
+        let get = |id| get_for_user(&pool, id, user.id);
+        assert_eq!(get(due.id).await.unwrap().unwrap().public, None);
+        assert!(get(later.id).await.unwrap().unwrap().public.is_some());
+        assert!(get(never.id).await.unwrap().unwrap().public.is_some());
+        assert_eq!(get(private.id).await.unwrap().unwrap().public, None);
+        assert_eq!(get_by_short_id(&pool, "dueeeeee").await.unwrap(), None);
+        // The image itself is kept.
+        assert!(exists(&pool, due.id).await.unwrap());
+        assert!(!exists(&pool, Uuid::new_v4()).await.unwrap());
+
+        assert_eq!(expire_due(&pool, 10_000).await.unwrap(), 1);
+        assert!(get(never.id).await.unwrap().unwrap().public.is_some());
     }
 
     #[tokio::test]
