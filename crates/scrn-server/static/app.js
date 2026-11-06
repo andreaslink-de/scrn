@@ -1,28 +1,51 @@
 // SCRN web UI helpers. Loaded as a file because the CSP forbids inline
 // scripts. Everything here is an enhancement; the pages work without it.
 
-// Copy buttons: <button data-copy="input-id" data-copied="…" data-failed="…">.
-// Uses the Clipboard API and falls back to selecting the text so it can be
-// copied by hand.
+// Copy buttons: <button data-copy="input-id" …> copies the value of an
+// input, <button data-copy-text="…" …> copies the given text; both carry
+// data-copied="…" and data-failed="…". The Clipboard API needs HTTPS, so
+// plain HTTP falls back to the copy command on a temporary text field.
+const copyByCommand = (text) => {
+  const area = document.createElement("textarea");
+  area.value = text;
+  area.setAttribute("readonly", "");
+  area.className = "copy-buffer";
+  document.body.append(area);
+  area.select();
+  let copied = false;
+  try {
+    copied = document.execCommand("copy");
+  } catch (_) {
+    copied = false;
+  }
+  area.remove();
+  return copied;
+};
+
 document.addEventListener("click", async (event) => {
-  const button = event.target.closest("button[data-copy]");
+  const button = event.target.closest("button[data-copy], button[data-copy-text]");
   if (!button) {
     return;
   }
-  const input = document.getElementById(button.dataset.copy);
-  if (!input) {
+  const input = button.dataset.copy ? document.getElementById(button.dataset.copy) : null;
+  const text = button.dataset.copyText ?? input?.value;
+  if (text === undefined) {
     return;
   }
   let copied = false;
   if (navigator.clipboard && window.isSecureContext) {
     try {
-      await navigator.clipboard.writeText(input.value);
+      await navigator.clipboard.writeText(text);
       copied = true;
     } catch (_) {
       copied = false;
     }
   }
   if (!copied) {
+    copied = copyByCommand(text);
+  }
+  if (!copied && input) {
+    // Last resort: select the text so it can be copied by hand.
     input.focus();
     input.select();
   }

@@ -77,6 +77,15 @@ struct Card {
 }
 
 impl Card {
+    /// The short ID at the end of the short URL. Cards show only this, the
+    /// domain is the same for every link.
+    fn short_code(&self) -> &str {
+        self.short_url
+            .as_deref()
+            .and_then(|url| url.rsplit('/').next())
+            .unwrap_or("")
+    }
+
     fn new(state: &AppState, shot: &Screenshot, now: i64) -> Self {
         let width = u32::try_from(shot.width).unwrap_or(1);
         let height = u32::try_from(shot.height).unwrap_or(1);

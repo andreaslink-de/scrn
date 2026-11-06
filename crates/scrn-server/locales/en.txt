@@ -158,6 +158,7 @@ expiry.date = Specific date
 copy.button = Copy
 copy.done = Copied
 copy.manual = Selected, press Ctrl+C to copy
+copy.failed = Copying failed
 error.expiry_date = The date must be in the future and at most 3650 days away.
 error.expiry_private = Only public screenshots have an expiry.
 
