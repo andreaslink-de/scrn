@@ -83,6 +83,27 @@ impl TestServer {
     }
 }
 
+/// Creates an API token for `user` directly in the database.
+pub async fn api_token(server: &TestServer, user: &User) -> String {
+    let secret = crypto::ApiTokenSecret::generate().unwrap();
+    scrn_server::repo::api_tokens::create(&server.state.db, user.id, "test", &secret.hash, START)
+        .await
+        .unwrap();
+    secret.token
+}
+
+impl TestServer {
+    /// An API client for `user` with a fresh token.
+    pub async fn api_client(&self, user: &User) -> Client {
+        let token = api_token(self, user).await;
+        let mut client = self.client("198.51.100.1");
+        client
+            .headers
+            .push(("authorization".into(), format!("Bearer {token}")));
+        client
+    }
+}
+
 pub struct Client {
     router: Router,
     pub cookies: HashMap<String, String>,
@@ -131,6 +152,22 @@ impl Client {
             .header(CONTENT_TYPE, "application/x-www-form-urlencoded")
             .body(Body::from(body))
             .unwrap();
+        self.send(request).await
+    }
+
+    /// Sends a request with a raw body and an optional content type.
+    pub async fn send_raw(
+        &mut self,
+        method: &str,
+        path: &str,
+        content_type: Option<&str>,
+        body: Vec<u8>,
+    ) -> TestResponse {
+        let mut builder = self.request(method, path);
+        if let Some(content_type) = content_type {
+            builder = builder.header(CONTENT_TYPE, content_type);
+        }
+        let request = builder.body(Body::from(body)).unwrap();
         self.send(request).await
     }
 

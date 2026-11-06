@@ -10,6 +10,8 @@ use crate::net::{IpNet, TrustedProxies};
 const DEFAULT_BASE_URL: &str = "http://localhost:8080";
 const DEFAULT_BIND: &str = "0.0.0.0:8080";
 const DEFAULT_DATA_DIR: &str = "/data";
+const DEFAULT_QUOTA_MB: i64 = 1024;
+const MIB: i64 = 1024 * 1024;
 
 /// Errors raised while reading the configuration.
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
@@ -22,6 +24,8 @@ pub enum ConfigError {
     Empty { name: &'static str },
     #[error("{name} must be true or false, got {value:?}")]
     InvalidBool { name: &'static str, value: String },
+    #[error("{name} must be a whole number of megabytes (0 for unlimited), got {value:?}")]
+    InvalidQuota { name: &'static str, value: String },
     #[error("{name} contains an invalid IP address or CIDR range: {value:?}")]
     InvalidProxy { name: &'static str, value: String },
 }
@@ -39,6 +43,8 @@ pub struct Config {
     pub cookie_secure: bool,
     /// Reverse proxies whose `X-Forwarded-*` headers are trusted.
     pub trusted_proxies: TrustedProxies,
+    /// Storage quota in bytes for users without their own; 0 means unlimited.
+    pub default_quota_bytes: i64,
 }
 
 impl Config {
@@ -84,12 +90,18 @@ impl Config {
             Some(value) => parse_proxies("SCRN_TRUSTED_PROXIES", &value)?,
         };
 
+        let default_quota_bytes = match get("SCRN_DEFAULT_QUOTA_MB") {
+            None => DEFAULT_QUOTA_MB * MIB,
+            Some(value) => parse_quota_mb("SCRN_DEFAULT_QUOTA_MB", &value)?,
+        };
+
         Ok(Self {
             base_url,
             bind,
             data_dir,
             cookie_secure,
             trusted_proxies,
+            default_quota_bytes,
         })
     }
 
@@ -137,6 +149,18 @@ fn parse_bool(name: &'static str, value: &str) -> Result<bool, ConfigError> {
     }
 }
 
+fn parse_quota_mb(name: &'static str, value: &str) -> Result<i64, ConfigError> {
+    value
+        .parse::<i64>()
+        .ok()
+        .filter(|mb| *mb >= 0)
+        .and_then(|mb| mb.checked_mul(MIB))
+        .ok_or_else(|| ConfigError::InvalidQuota {
+            name,
+            value: value.to_owned(),
+        })
+}
+
 fn parse_proxies(name: &'static str, value: &str) -> Result<TrustedProxies, ConfigError> {
     let mut nets = Vec::new();
     for part in value.split(',').map(str::trim).filter(|p| !p.is_empty()) {
@@ -173,6 +197,7 @@ mod tests {
         assert_eq!(cfg.data_dir, PathBuf::from("/data"));
         assert!(cfg.cookie_secure);
         assert!(cfg.trusted_proxies.is_empty());
+        assert_eq!(cfg.default_quota_bytes, 1024 * 1024 * 1024);
         assert_eq!(cfg.database_path(), PathBuf::from("/data/scrn.db"));
         assert_eq!(cfg.files_dir(), PathBuf::from("/data/files"));
     }
@@ -240,6 +265,23 @@ mod tests {
             config(&[("SCRN_COOKIE_SECURE", "maybe")]),
             Err(ConfigError::InvalidBool { .. })
         ));
+    }
+
+    #[test]
+    fn parses_the_default_quota() {
+        let cfg = config(&[("SCRN_DEFAULT_QUOTA_MB", "0")]).unwrap();
+        assert_eq!(cfg.default_quota_bytes, 0);
+        let cfg = config(&[("SCRN_DEFAULT_QUOTA_MB", "5")]).unwrap();
+        assert_eq!(cfg.default_quota_bytes, 5 * 1024 * 1024);
+        for bad in ["-1", "1.5", "lots", "9223372036854775807"] {
+            assert!(
+                matches!(
+                    config(&[("SCRN_DEFAULT_QUOTA_MB", bad)]),
+                    Err(ConfigError::InvalidQuota { .. })
+                ),
+                "{bad}"
+            );
+        }
     }
 
     #[test]

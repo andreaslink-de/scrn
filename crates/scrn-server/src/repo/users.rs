@@ -46,6 +46,15 @@ pub struct User {
 }
 
 impl User {
+    /// The quota that applies to this user in bytes, `None` if unlimited.
+    /// `default_bytes` is the server default, where 0 also means unlimited.
+    pub fn effective_quota(&self, default_bytes: i64) -> Option<i64> {
+        match self.quota_bytes.unwrap_or(default_bytes) {
+            0 => None,
+            limit => Some(limit),
+        }
+    }
+
     pub fn is_disabled(&self) -> bool {
         self.disabled_at.is_some()
     }
@@ -157,6 +166,23 @@ pub async fn set_disabled(
     Ok(result.rows_affected() == 1)
 }
 
+/// Sets the storage quota of a user: `None` for the server default,
+/// `Some(0)` for unlimited. Existing screenshots are never touched; a quota
+/// below the current usage only blocks new uploads. Returns false if the
+/// user does not exist.
+pub async fn set_quota(
+    db: impl SqliteExecutor<'_>,
+    id: i64,
+    quota_bytes: Option<i64>,
+) -> Result<bool, RepoError> {
+    let result = sqlx::query("UPDATE users SET quota_bytes = ? WHERE id = ?")
+        .bind(quota_bytes)
+        .bind(id)
+        .execute(db)
+        .await?;
+    Ok(result.rows_affected() == 1)
+}
+
 /// Deletes a user and, through the foreign keys, all of their data.
 /// Returns false if the user does not exist.
 pub async fn delete(db: impl SqliteExecutor<'_>, id: i64) -> Result<bool, RepoError> {
@@ -171,6 +197,29 @@ pub async fn delete(db: impl SqliteExecutor<'_>, id: i64) -> Result<bool, RepoEr
 mod tests {
     use super::*;
     use crate::repo::test_util;
+
+    #[tokio::test]
+    async fn quota_can_be_set_and_resolves_against_the_default() {
+        let (_dir, pool) = test_util::pool().await;
+        let user = test_util::user(&pool, "alice").await;
+        assert_eq!(user.effective_quota(1000), Some(1000));
+        assert_eq!(user.effective_quota(0), None);
+
+        assert!(set_quota(&pool, user.id, Some(0)).await.unwrap());
+        let user = get_by_id(&pool, user.id).await.unwrap().unwrap();
+        assert_eq!(user.effective_quota(1000), None);
+
+        assert!(set_quota(&pool, user.id, Some(42)).await.unwrap());
+        let user = get_by_id(&pool, user.id).await.unwrap().unwrap();
+        assert_eq!(user.effective_quota(0), Some(42));
+
+        assert!(set_quota(&pool, user.id, None).await.unwrap());
+        assert!(!set_quota(&pool, 999, None).await.unwrap());
+        assert!(matches!(
+            set_quota(&pool, user.id, Some(-1)).await,
+            Err(RepoError::Db(_))
+        ));
+    }
 
     #[tokio::test]
     async fn create_and_read_with_defaults() {
