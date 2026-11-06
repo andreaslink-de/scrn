@@ -256,11 +256,18 @@ pub async fn run(config: Config) -> Result<(), ServerError> {
         data_dir = %state.config.data_dir.display(),
         cookie_secure = state.config.cookie_secure,
         trusted_proxies = state.config.trusted_proxies.nets().len(),
+        trusted_proxy_hosts = ?state.config.trusted_proxies.hosts(),
         "scrn-server listening"
     );
+    // The first lookup runs before requests are served.
+    state.config.trusted_proxies.refresh().await;
+    let proxy_refresh = state.config.trusted_proxies.spawn_refresh();
     let maintenance = jobs::spawn(state.clone());
     let result = serve(listener, state, shutdown_signal()).await;
     maintenance.abort();
+    if let Some(task) = proxy_refresh {
+        task.abort();
+    }
     result?;
     tracing::info!("scrn-server stopped");
     Ok(())

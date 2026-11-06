@@ -41,7 +41,7 @@ The implementation plan lives in [docs/PLAN.md](docs/PLAN.md).
 cp .env.example .env   # adjust as needed
 mkdir -p data          # must be owned by SCRN_UID:SCRN_GID (default 1000:1000)
 docker compose up --build -d
-curl http://127.0.0.1:8080/healthz
+curl http://127.0.0.1:8081/healthz
 ```
 
 The container runs as an unprivileged user with a read-only root filesystem.
@@ -95,13 +95,13 @@ a fallback, and an account's last way to sign in cannot be deleted.
 The relying party is derived from `SCRN_BASE_URL`: its host name is the
 relying party ID and the URL is the expected origin. Passkeys are bound to
 that host name, so changing it later makes existing passkeys unusable.
-`http://localhost:8080` works for local development; with an IP address as
+`http://localhost:8081` works for local development; with an IP address as
 base URL, passkeys are switched off.
 
 To test by hand in a browser:
 
-1. Start the server with `SCRN_BASE_URL=http://localhost:8080` and open
-   `http://localhost:8080` (not `127.0.0.1`).
+1. Start the server with `SCRN_BASE_URL=http://localhost:8081` and open
+   `http://localhost:8081` (not `127.0.0.1`).
 2. Sign in with the password, open *Settings*, enter a name under
    *Passkeys* and choose *Add passkey*. The browser asks for Windows Hello,
    Touch ID, a phone or a password manager.
@@ -167,18 +167,18 @@ All settings are environment variables, documented in
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `SCRN_BASE_URL` | `http://localhost:8080` | Public base URL, used for short links |
-| `SCRN_BIND` | `0.0.0.0:8080` | Listen address |
+| `SCRN_BASE_URL` | `http://localhost:8081` | Public base URL, used for short links |
+| `SCRN_BIND` | `0.0.0.0:8081` | Listen address |
 | `SCRN_DATA_DIR` | `/data` | Database and screenshot files |
 | `SCRN_COOKIE_SECURE` | `true` | `Secure` flag on session cookies |
-| `SCRN_TRUSTED_PROXIES` | empty | IPs or CIDR ranges allowed to set `X-Forwarded-*` |
+| `SCRN_TRUSTED_PROXIES` | empty | IPs, CIDR ranges or host names allowed to set `X-Forwarded-*` |
 | `SCRN_DEFAULT_QUOTA_MB` | `1024` | Storage quota per user in MiB, 0 for unlimited |
 | `RUST_LOG` | `info` | Log filter |
 | `SCRN_LOG_FORMAT` | `text` | `text` or `json` |
 
 Compose additionally reads `SCRN_IMAGE` (image to run, empty builds it),
 `SCRN_PUBLISH_ADDR` (default `127.0.0.1`),
-`SCRN_PUBLISH_PORT` (default `8080`), `SCRN_UID` and `SCRN_GID` (default
+`SCRN_PUBLISH_PORT` (default `8081`), `SCRN_UID` and `SCRN_GID` (default
 `1000`, must own `./data`).
 
 ## Deployment
@@ -194,7 +194,7 @@ any other proxy works the same way.
    ```sh
    SCRN_BASE_URL=https://scrn.example.org
    SCRN_COOKIE_SECURE=true
-   SCRN_TRUSTED_PROXIES=172.18.0.0/16
+   SCRN_TRUSTED_PROXIES=nginx-proxy-manager
    SCRN_DEFAULT_QUOTA_MB=1024
    ```
 
@@ -226,11 +226,15 @@ published on `127.0.0.1`.
 The server sees the proxy, not the visitor. It trusts `X-Forwarded-For`
 only from the addresses in `SCRN_TRUSTED_PROXIES`, so rate limits apply per
 visitor and nobody can fake an address by sending the header themselves.
-Set it to the address NPM connects from:
+The value is a comma-separated list of IP addresses, CIDR ranges and host
+names. Host names are looked up at startup and every 30 seconds, so a proxy
+container that gets a new address after a restart stays trusted; a name
+that cannot be resolved trusts nothing.
 
-- **NPM and SCRN in the same Docker network** (recommended): put both
-  containers into one network, for example by adding NPM's network to
-  `compose.yaml`:
+- **NPM and SCRN in the same Docker network** (recommended): put the SCRN
+  container into NPM's network. A `compose.override.yaml` next to
+  `compose.yaml` is read by Compose automatically and keeps the change out
+  of the checked-out file:
 
   ```yaml
   services:
@@ -242,9 +246,10 @@ Set it to the address NPM connects from:
       name: npm_default   # see `docker network ls`
   ```
 
-  Then use the network's subnet (`docker network inspect npm_default`, for
-  example `172.18.0.0/16`) as `SCRN_TRUSTED_PROXIES`, and forward NPM to the
-  host name `scrn`, port `8080`.
+  Set `SCRN_TRUSTED_PROXIES` to NPM's container name (`docker ps`, for
+  example `nginx-proxy-manager`) and forward NPM to the host name `scrn`
+  (the fixed container name), port `8081`. The port does not need to be
+  published on the host for this.
 - **NPM on the host or another machine**: publish the port where NPM can
   reach it (`SCRN_PUBLISH_ADDR`) and use NPM's address, for example
   `SCRN_TRUSTED_PROXIES=127.0.0.1` or the Docker bridge gateway
@@ -258,7 +263,7 @@ limiting; the server keeps working.
 Create a proxy host:
 
 - **Details**: domain `scrn.example.org`, scheme `http`, forward host `scrn`
-  (or the host address), forward port `8080`, *Block Common Exploits* on.
+  (or the host address), forward port `8081`, *Block Common Exploits* on.
   *Websockets Support* is not needed.
 - **SSL**: request a Let's Encrypt certificate, enable *Force SSL*,
   *HTTP/2 Support* and *HSTS Enabled*.

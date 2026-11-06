@@ -1,7 +1,7 @@
 //! Passkeys (WebAuthn) with webauthn-rs.
 //!
 //! The relying party ID is the host of `SCRN_BASE_URL` and the origin is the
-//! base URL itself, so `http://localhost:8080` works for local development.
+//! base URL itself, so `http://localhost:8081` works for local development.
 //! Browsers do not allow IP addresses as relying party ID; with such a base
 //! URL passkeys are switched off and only passwords work.
 //!

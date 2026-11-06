@@ -6,6 +6,18 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- `SCRN_TRUSTED_PROXIES` accepts host names, such as the container name of
+  Nginx Proxy Manager; they are resolved at startup and every 30 seconds.
+
+### Changed
+
+- The default port is 8081 instead of 8080 (`SCRN_BIND`,
+  `SCRN_PUBLISH_PORT`, the image's `EXPOSE`). Set `SCRN_BIND=0.0.0.0:8080`
+  and `SCRN_PUBLISH_PORT=8080` to keep the old port.
+- `compose.yaml` names the container `scrn`.
+
 ## [0.1.0] - 2026-11-06
 
 First release of the SCRN server.
