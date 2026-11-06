@@ -6,6 +6,26 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-06
+
+### Added
+
+- SCRN brand icons: new favicon (SVG and ICO, also at `/favicon.ico`),
+  an icon for the home screen of phones (`apple-touch-icon`), a web app
+  manifest and the logo in the header, matching the theme. The sources
+  live in `assets/brand`.
+
+### Changed
+
+- The accent color is the brand green instead of blue (`#34e58c` in the
+  dark theme, `#0a7a44` in the light one for enough contrast).
+- Gallery cards show only the short ID of a public link instead of the
+  cut-off URL; *Kopieren* still copies the whole URL.
+- Copying links also works without HTTPS: when the browser offers no
+  Clipboard API, the copy command is used before falling back to
+  selecting the text.
+- The page CSP allows `manifest-src 'self'` for the web app manifest.
+
 ## [0.2.0] - 2026-11-06
 
 ### Added
