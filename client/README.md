@@ -1,8 +1,7 @@
 # SCRN desktop client
 
 In development. It runs on Ubuntu 24.04 with GNOME on Wayland; other
-desktops follow later (see `docs/PLAN.md`). Upload to the server is not
-wired up yet: finished images are saved under `~/Pictures/SCRN`.
+desktops follow later (see `docs/PLAN.md`).
 
 ## Build and run
 
@@ -12,7 +11,20 @@ sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev \
 cd client
 cargo run              # tray icon
 cargo run -- capture   # take a screenshot (hands over to the running app)
+cargo run -- copy-last # copy the link of the last upload
 ```
+
+## Set up
+
+1. Create an API token in the web UI under *Einstellungen → API-Tokens*.
+2. Tray menu → *Einstellungen …*: enter the server address and the
+   token, *Verbindung testen*, then *Speichern*. The token goes to the
+   system keyring (GNOME Keyring), never into a file.
+3. Choose the visibility of new uploads (private by default), the
+   expiry of public links and whether the client starts on login.
+
+Settings live in `~/.config/scrn/config.json`, the last ten uploads in
+`~/.local/state/scrn/history.json`.
 
 ## Use
 
@@ -27,8 +39,16 @@ cargo run -- capture   # take a screenshot (hands over to the running app)
 | Highlight | `2` | translucent yellow rectangle |
 | Blur | `3` | makes the area unreadable (downscaled, the detail is gone) |
 
-   `Ctrl+Z` undoes the last shape. `Enter` or `Ctrl+S` saves, Esc discards
-   (press it twice once there are shapes).
+   `Ctrl+Z` undoes the last shape. `Enter` or `Ctrl+S` uploads, Esc
+   discards (press it twice once there are shapes).
+4. The tray shows empty brackets while the upload runs. A public upload
+   puts its short link on the clipboard; a private one has no link and
+   shows up in the gallery. Without a server, or when the upload fails,
+   the image is saved under `~/Pictures/SCRN` instead.
+
+The tray menu has *Letzten Link kopieren* (also `scrn copy-last`, e.g.
+for a keyboard shortcut) and *Letzte Links* with the last ten uploads:
+public ones are copied, private ones open in the gallery.
 
 The client log is `~/.local/state/scrn/client.log`. It records the
 desktop, monitors and timings, never image data.

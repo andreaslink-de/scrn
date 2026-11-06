@@ -32,6 +32,8 @@ let shapes = [];
 let drawing = null;
 let busy = false;
 let discardArmed = 0;
+// Set from the app: with a server, saving uploads the image.
+let uploads = false;
 
 // Sizes in image pixels. The selection has the pixel density of the
 // screen, so lines are scaled with it to look the same on HiDPI screens.
@@ -203,7 +205,7 @@ const save = async () => {
   }
   busy = true;
   updateButtons();
-  setStatus(t("editor.saving"));
+  setStatus(t(uploads ? "editor.uploading" : "editor.saving"));
   try {
     drawing = null;
     render();
@@ -345,6 +347,8 @@ updateButtons();
 
 (async () => {
   try {
+    uploads = (await invoke("editor_config")).upload;
+    saveButton.textContent = t(uploads ? "editor.upload" : "editor.save");
     image = await decode(await invoke("edit_image"));
     canvas.width = image.width;
     canvas.height = image.height;

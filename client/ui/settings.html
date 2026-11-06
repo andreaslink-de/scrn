@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>SCRN</title>
+<link rel="stylesheet" href="settings.css">
+<script type="module" src="settings.js"></script>
+</head>
+<body>
+<main>
+<h1 data-t="settings.title"></h1>
+<form id="form" novalidate>
+  <section>
+    <h2 data-t="settings.server"></h2>
+    <label for="server_url" data-t="settings.server_url"></label>
+    <input id="server_url" name="server_url" type="url" autocomplete="off" spellcheck="false" data-t-placeholder="settings.server_hint">
+    <p id="insecure" class="warning" hidden data-t="settings.insecure"></p>
+
+    <label for="token" data-t="settings.token"></label>
+    <input id="token" name="token" type="password" autocomplete="off" spellcheck="false" placeholder="scrn_…" aria-describedby="token-state token-hint">
+    <p id="token-state" class="hint"></p>
+    <p id="token-hint" class="hint" data-t="settings.token_hint"></p>
+    <div class="row">
+      <button type="button" id="test" class="secondary" data-t="settings.test"></button>
+      <button type="button" id="forget" class="secondary" hidden data-t="settings.forget"></button>
+    </div>
+    <p id="test-result" class="result" role="status"></p>
+  </section>
+
+  <section>
+    <h2 data-t="settings.uploads"></h2>
+    <fieldset>
+      <legend data-t="settings.visibility"></legend>
+      <label class="choice"><input type="radio" name="visibility" value="private"> <span data-t="settings.private"></span></label>
+      <label class="choice"><input type="radio" name="visibility" value="public"> <span data-t="settings.public"></span></label>
+    </fieldset>
+    <label for="expiry" data-t="settings.expiry"></label>
+    <select id="expiry" name="expiry">
+      <option value="" data-t="settings.expiry_server"></option>
+      <option value="0" data-t="settings.expiry_never"></option>
+      <option value="1" data-t="settings.expiry_1"></option>
+      <option value="7" data-t="settings.expiry_7"></option>
+      <option value="30" data-t="settings.expiry_30"></option>
+    </select>
+    <label class="choice"><input type="checkbox" id="keep_copy" name="keep_copy"> <span data-t="settings.keep_copy"></span></label>
+  </section>
+
+  <section>
+    <h2 data-t="settings.system"></h2>
+    <label class="choice"><input type="checkbox" id="autostart" name="autostart"> <span data-t="settings.autostart"></span></label>
+  </section>
+
+  <div class="actions">
+    <p id="status" class="result" role="status"></p>
+    <button type="submit" class="primary" data-t="settings.save"></button>
+  </div>
+  <p id="files" class="hint files"></p>
+</form>
+</main>
+</body>
+</html>

@@ -24,7 +24,11 @@ ashpd = { version = "0.14.0", default-features = false, features = ["tokio", "sc
 # Already pulled in by Tauri; needed to put each overlay fullscreen on its
 # own monitor (Wayland ignores window positions).
 gtk = "0.18.2"
+keyring = "4"
+notify-rust = { version = "4.18.2", default-features = false, features = ["z-with-tokio"] }
 png = "0.18.1"
+reqwest = { version = "0.13", default-features = false, features = ["rustls", "json", "system-proxy"] }
+scrn-proto = { version = "0.2.0", path = "../crates/scrn-proto" }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1"
 tauri = { version = "2.12.5", features = ["tray-icon", "image-png"] }
@@ -38,3 +42,6 @@ unsafe_code = "forbid"
 [lints.clippy]
 unwrap_used = "warn"
 expect_used = "warn"
+
+[dev-dependencies]
+tokio = { version = "1.54.1", features = ["macros", "net", "io-util", "rt-multi-thread"] }
