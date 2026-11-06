@@ -27,6 +27,7 @@ struct LoginPage {
     page: Page,
     csrf: String,
     error: Option<String>,
+    passkeys: bool,
 }
 
 #[derive(Deserialize)]
@@ -52,7 +53,7 @@ pub async fn show(
     }
     let (csrf, cookie) = auth::form_csrf(&headers, &state)?;
     Ok(with_cookie(
-        render(prefs, csrf, None, StatusCode::OK)?,
+        render(&state, prefs, csrf, None, StatusCode::OK)?,
         cookie,
     ))
 }
@@ -75,6 +76,7 @@ pub async fn submit(
         || state.login_user_limiter.is_limited(&user_key, now)
     {
         return render(
+            &state,
             prefs,
             form.csrf,
             message("error.too_many_attempts"),
@@ -100,6 +102,7 @@ pub async fn submit(
         _ => {
             state.login_user_limiter.record(&user_key, now);
             return render(
+                &state,
                 prefs,
                 form.csrf,
                 message("error.login_failed"),
@@ -132,6 +135,7 @@ pub async fn logout(
 }
 
 fn render(
+    state: &AppState,
     prefs: Prefs,
     csrf: String,
     error: Option<String>,
@@ -140,5 +144,13 @@ fn render(
     // The username is deliberately not echoed back, so the page is the
     // same for every failed attempt.
     let page = Page::public(prefs, "login.title", Some(csrf.clone()), "/login");
-    html::render(status, &LoginPage { page, csrf, error })
+    html::render(
+        status,
+        &LoginPage {
+            page,
+            csrf,
+            error,
+            passkeys: state.passkeys.is_some(),
+        },
+    )
 }

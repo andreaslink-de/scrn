@@ -83,6 +83,35 @@ and offer a switch in the footer. Administrators see each user's storage
 usage on `/admin` and can set a per-user quota in MiB (empty for the server
 default, 0 for unlimited).
 
+### Passkeys
+
+Besides the password, users can sign in with passkeys (Windows Hello,
+Touch ID, a phone, a security key or a password manager). They are added,
+renamed and deleted on the settings page; the login page offers
+"Sign in with a passkey" after entering the username. The password stays as
+a fallback, and an account's last way to sign in cannot be deleted.
+
+The relying party is derived from `SCRN_BASE_URL`: its host name is the
+relying party ID and the URL is the expected origin. Passkeys are bound to
+that host name, so changing it later makes existing passkeys unusable.
+`http://localhost:8080` works for local development; with an IP address as
+base URL, passkeys are switched off.
+
+To test by hand in a browser:
+
+1. Start the server with `SCRN_BASE_URL=http://localhost:8080` and open
+   `http://localhost:8080` (not `127.0.0.1`).
+2. Sign in with the password, open *Settings*, enter a name under
+   *Passkeys* and choose *Add passkey*. The browser asks for Windows Hello,
+   Touch ID, a phone or a password manager.
+3. Sign out, enter the username on the login page and choose
+   *Sign in with a passkey*.
+
+Without a real authenticator, Chrome's DevTools offer a virtual one: open
+DevTools, then *More tools* → *WebAuthn*, enable the virtual authenticator
+environment and add a `ctap2` authenticator with resident key and user
+verification.
+
 ### API tokens
 
 The desktop client authenticates with an API token. Create one per device on

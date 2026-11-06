@@ -17,6 +17,7 @@ use crate::html::{self, Page, Usage};
 use crate::i18n;
 use crate::prefs::{self, Prefs};
 use crate::repo::api_tokens::{self, ApiToken};
+use crate::repo::passkeys::{self, Passkey};
 use crate::repo::{screenshots, users};
 
 /// Token names: 1 to 100 characters, matching the database constraint.
@@ -40,11 +41,16 @@ struct SettingsPage {
     token_error: Option<String>,
     token_name: String,
     tokens: Vec<ApiToken>,
+    passkeys_enabled: bool,
+    passkeys: Vec<Passkey>,
+    passkey_added: bool,
+    passkey_error: Option<String>,
 }
 
 #[derive(Deserialize)]
 pub struct ShowQuery {
     saved: Option<String>,
+    passkey: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -77,6 +83,8 @@ struct Extra {
     new_token: Option<String>,
     token_error: Option<String>,
     token_name: String,
+    passkey_added: bool,
+    passkey_error: Option<String>,
 }
 
 pub async fn show(
@@ -86,6 +94,7 @@ pub async fn show(
 ) -> Result<Response, AppError> {
     let extra = Extra {
         saved: query.saved.is_some(),
+        passkey_added: query.passkey.as_deref() == Some("added"),
         ..Extra::default()
     };
     render(&state, &user, extra, StatusCode::OK).await
@@ -159,7 +168,7 @@ pub async fn create_token(
     Form(form): Form<TokenForm>,
 ) -> Result<Response, AppError> {
     user.verify_csrf(&form.csrf)?;
-    let Some(name) = valid_token_name(&form.name) else {
+    let Some(name) = valid_name(&form.name) else {
         let extra = Extra {
             token_error: Some(
                 i18n::catalogs()
@@ -209,12 +218,26 @@ pub async fn revoke_token(
     Ok(Redirect::to("/app/settings#tokens").into_response())
 }
 
-/// Trims the name and checks its length. Control characters are rejected.
-fn valid_token_name(raw: &str) -> Option<&str> {
+/// Trims a token or passkey name and checks its length (1 to 100
+/// characters). Control characters are rejected.
+pub fn valid_name(raw: &str) -> Option<&str> {
     let name = raw.trim();
     let chars = name.chars().count();
     ((1..=MAX_TOKEN_NAME_CHARS).contains(&chars) && !name.chars().any(char::is_control))
         .then_some(name)
+}
+
+/// The settings page with an error in the passkey section.
+pub async fn render_with_passkey_error(
+    state: &AppState,
+    user: &CurrentUser,
+    key: &str,
+) -> Result<Response, AppError> {
+    let extra = Extra {
+        passkey_error: Some(i18n::catalogs().t(user.user.language, key).to_owned()),
+        ..Extra::default()
+    };
+    render(state, user, extra, StatusCode::UNPROCESSABLE_ENTITY).await
 }
 
 async fn render(
@@ -224,6 +247,7 @@ async fn render(
     status: StatusCode,
 ) -> Result<Response, AppError> {
     let tokens = api_tokens::list_for_user(&state.db, user.user.id).await?;
+    let passkey_rows = passkeys::list_for_user(&state.db, user.user.id).await?;
     let used = screenshots::usage_for_user(&state.db, user.user.id).await?;
     let quota = user.user.effective_quota(state.config.default_quota_bytes);
     let (expiry, custom_days) = extra
@@ -244,6 +268,10 @@ async fn render(
             token_error: extra.token_error,
             token_name: extra.token_name,
             tokens,
+            passkeys_enabled: state.passkeys.is_some(),
+            passkeys: passkey_rows,
+            passkey_added: extra.passkey_added,
+            passkey_error: extra.passkey_error,
         },
     )
 }
@@ -254,15 +282,12 @@ mod tests {
 
     #[test]
     fn token_names() {
-        assert_eq!(valid_token_name("  Laptop "), Some("Laptop"));
-        assert_eq!(
-            valid_token_name(&"ä".repeat(100)),
-            Some("ä".repeat(100).as_str())
-        );
-        assert_eq!(valid_token_name(""), None);
-        assert_eq!(valid_token_name("   "), None);
-        assert_eq!(valid_token_name(&"x".repeat(101)), None);
-        assert_eq!(valid_token_name("a\u{0}b"), None);
+        assert_eq!(valid_name("  Laptop "), Some("Laptop"));
+        assert_eq!(valid_name(&"ä".repeat(100)), Some("ä".repeat(100).as_str()));
+        assert_eq!(valid_name(""), None);
+        assert_eq!(valid_name("   "), None);
+        assert_eq!(valid_name(&"x".repeat(101)), None);
+        assert_eq!(valid_name("a\u{0}b"), None);
     }
 
     #[test]

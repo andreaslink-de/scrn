@@ -14,5 +14,13 @@
 </div>
 <button type="submit">{{ page.t("login.submit") }}</button>
 </form>
+{% if passkeys %}
+<div class="passkey-login" data-passkey-login data-unsupported="{{ page.t("passkey.unsupported") }}" data-need-username="{{ page.t("login.passkey_username") }}" data-cancelled="{{ page.t("passkey.cancelled") }}">
+<p class="divider"><span>{{ page.t("login.or") }}</span></p>
+<button type="button" class="secondary" data-passkey-login-button>{{ page.t("login.passkey") }}</button>
+<p class="hint">{{ page.t("login.passkey_hint") }}</p>
+<p class="alert" role="alert" data-passkey-message hidden></p>
+</div>
+{% endif %}
 </div>
 {% endblock %}

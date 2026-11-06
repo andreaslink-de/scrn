@@ -41,3 +41,153 @@ document.addEventListener("focusin", (event) => {
     input.select();
   }
 });
+
+// --- Passkeys (WebAuthn) ----------------------------------------------------
+//
+// The server sends the ceremony options as JSON with base64url-encoded
+// binary fields and expects the credential back in the same encoding (the
+// format of PublicKeyCredential.toJSON()). Newer browsers convert natively;
+// the helpers below cover the others.
+
+const b64urlToBuffer = (value) => {
+  const base64 = value.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = base64 + "=".repeat((4 - (base64.length % 4)) % 4);
+  return Uint8Array.from(atob(padded), (c) => c.charCodeAt(0)).buffer;
+};
+
+const bufferToB64url = (buffer) => {
+  let binary = "";
+  for (const byte of new Uint8Array(buffer)) {
+    binary += String.fromCharCode(byte);
+  }
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+};
+
+const creationOptions = (json) => {
+  if (PublicKeyCredential.parseCreationOptionsFromJSON) {
+    return PublicKeyCredential.parseCreationOptionsFromJSON(json);
+  }
+  return {
+    ...json,
+    challenge: b64urlToBuffer(json.challenge),
+    user: { ...json.user, id: b64urlToBuffer(json.user.id) },
+    excludeCredentials: (json.excludeCredentials || []).map((c) => ({ ...c, id: b64urlToBuffer(c.id) })),
+  };
+};
+
+const requestOptions = (json) => {
+  if (PublicKeyCredential.parseRequestOptionsFromJSON) {
+    return PublicKeyCredential.parseRequestOptionsFromJSON(json);
+  }
+  return {
+    ...json,
+    challenge: b64urlToBuffer(json.challenge),
+    allowCredentials: (json.allowCredentials || []).map((c) => ({ ...c, id: b64urlToBuffer(c.id) })),
+  };
+};
+
+const credentialJson = (credential) => {
+  if (typeof credential.toJSON === "function") {
+    return credential.toJSON();
+  }
+  const r = credential.response;
+  const response = { clientDataJSON: bufferToB64url(r.clientDataJSON) };
+  if (r.attestationObject) {
+    response.attestationObject = bufferToB64url(r.attestationObject);
+    response.transports = r.getTransports ? r.getTransports() : [];
+  } else {
+    response.authenticatorData = bufferToB64url(r.authenticatorData);
+    response.signature = bufferToB64url(r.signature);
+    response.userHandle = r.userHandle ? bufferToB64url(r.userHandle) : null;
+  }
+  return {
+    id: credential.id,
+    rawId: bufferToB64url(credential.rawId),
+    type: credential.type,
+    response,
+    clientExtensionResults: credential.getClientExtensionResults(),
+  };
+};
+
+const postJson = async (url, csrf, body) => {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf },
+    body: JSON.stringify(body),
+    credentials: "same-origin",
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.message || response.statusText);
+  }
+  return data;
+};
+
+const showMessage = (container, text) => {
+  const box = container.querySelector("[data-passkey-message]") || document.querySelector("[data-passkey-message]");
+  if (box) {
+    box.textContent = text;
+    box.hidden = false;
+  }
+};
+
+const supported = () => window.PublicKeyCredential && navigator.credentials;
+
+// Settings: register a new passkey.
+document.addEventListener("submit", async (event) => {
+  const form = event.target.closest("form[data-passkey-register]");
+  if (!form) {
+    return;
+  }
+  event.preventDefault();
+  const section = form.closest("section") || document;
+  if (!supported()) {
+    showMessage(section, form.dataset.unsupported);
+    return;
+  }
+  const csrf = form.dataset.csrf;
+  try {
+    const start = await postJson("/app/passkeys/register/start", csrf, {});
+    const credential = await navigator.credentials.create({ publicKey: creationOptions(start.options.publicKey) });
+    const done = await postJson("/app/passkeys/register/finish", csrf, {
+      ceremony: start.ceremony,
+      name: form.elements.name.value,
+      credential: credentialJson(credential),
+    });
+    window.location.assign(done.redirect);
+  } catch (error) {
+    showMessage(section, error.name === "NotAllowedError" ? form.dataset.cancelled : error.message);
+  }
+});
+
+// Login: sign in with a passkey for the entered username.
+document.addEventListener("click", async (event) => {
+  const button = event.target.closest("button[data-passkey-login-button]");
+  if (!button) {
+    return;
+  }
+  const box = button.closest("[data-passkey-login]");
+  const form = document.querySelector('form[action="/login"]');
+  if (!supported()) {
+    showMessage(box, box.dataset.unsupported);
+    return;
+  }
+  const username = form.elements.username.value.trim();
+  if (!username) {
+    showMessage(box, box.dataset.needUsername);
+    form.elements.username.focus();
+    return;
+  }
+  const csrf = form.elements.csrf.value;
+  try {
+    const start = await postJson("/login/passkey/start", csrf, { username });
+    const credential = await navigator.credentials.get({ publicKey: requestOptions(start.options.publicKey) });
+    const done = await postJson("/login/passkey/finish", csrf, {
+      ceremony: start.ceremony,
+      credential: credentialJson(credential),
+    });
+    window.location.assign(done.redirect);
+  } catch (error) {
+    showMessage(box, error.name === "NotAllowedError" ? box.dataset.cancelled : error.message);
+  }
+});

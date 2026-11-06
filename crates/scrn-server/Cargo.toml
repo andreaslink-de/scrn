@@ -16,6 +16,7 @@ getrandom = "0.4.3"
 png = "0.18.1"
 scrn-proto = { path = "../scrn-proto" }
 serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1"
 sha2 = "0.11.1"
 sqlx = { version = "0.9.0", default-features = false, features = ["runtime-tokio", "sqlite-bundled", "migrate", "macros"] }
 thiserror = "2.0.21"
@@ -23,12 +24,13 @@ tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros", "net", "s
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", default-features = false, features = ["fmt", "env-filter", "json", "ansi"] }
 uuid = { version = "1.29.0", default-features = false, features = ["v4", "std"] }
+webauthn-rs = { version = "0.6.2", default-features = false }
 
 [lints]
 workspace = true
 
 [dev-dependencies]
 http-body-util = "0.1.5"
-serde_json = "1"
+p256 = { version = "0.14", features = ["ecdsa"] }
 tempfile = "3.27.0"
 tower = { version = "0.5.3", default-features = false, features = ["util"] }
