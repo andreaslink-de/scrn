@@ -1,7 +1,7 @@
 [package]
 name = "scrn-client"
-description = "SCRN desktop client (C0 spike: tray, portal capture, area selection)"
-version = "0.0.0"
+description = "SCRN desktop client: capture, annotate and upload screenshots"
+version = "0.1.0"
 edition = "2024"
 license = "MIT"
 authors = ["Andreas Link"]

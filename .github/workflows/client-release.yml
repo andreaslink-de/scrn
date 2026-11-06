@@ -1,0 +1,84 @@
+name: Client release
+
+# Builds the Linux packages of the desktop client (.deb and AppImage).
+# A tag client-v1.2.3 attaches them to a draft GitHub release of that tag,
+# which is published by hand. Started by hand (workflow_dispatch), the
+# packages are only kept as workflow artifacts.
+
+on:
+  push:
+    tags: ["client-v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  linux:
+    name: build .deb and AppImage
+    # The oldest supported runner: the AppImage then runs on systems with
+    # this glibc or newer.
+    runs-on: ubuntu-22.04
+    defaults:
+      run:
+        working-directory: client
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check that the tag matches the client version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          version="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n1)"
+          if [ "client-v${version}" != "${GITHUB_REF_NAME}" ]; then
+            echo "tag ${GITHUB_REF_NAME} does not match client/Cargo.toml version ${version}" >&2
+            exit 1
+          fi
+
+      - name: Install system libraries for Tauri
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev \
+            librsvg2-dev libxdo-dev patchelf file
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: client
+
+      - name: Install the Tauri CLI
+        run: cargo install tauri-cli --version "~2.12.4" --locked
+
+      - name: Build the packages
+        run: cargo tauri build --bundles deb,appimage
+
+      - name: Collect the packages
+        id: files
+        run: |
+          mkdir -p ../dist
+          cp target/release/bundle/deb/*.deb target/release/bundle/appimage/*.AppImage ../dist/
+          (cd ../dist && sha256sum * > SHA256SUMS)
+          ls -l ../dist
+
+      - name: Keep the packages as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: scrn-client-linux
+          path: dist/
+
+      - name: Attach the packages to a draft release
+        if: startsWith(github.ref, 'refs/tags/')
+        working-directory: dist
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            gh release upload "${GITHUB_REF_NAME}" * --clobber
+          else
+            gh release create "${GITHUB_REF_NAME}" * --draft \
+              --title "SCRN client ${GITHUB_REF_NAME#client-v}" \
+              --notes "Linux packages of the SCRN desktop client. See client/README.md."
+          fi

@@ -83,3 +83,10 @@ jobs:
         uses: EmbarkStudios/cargo-deny-action@v2
         with:
           command: check
+
+      - name: Check dependencies of the client
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          manifest-path: client/Cargo.toml
+          command: check
+          command-arguments: --config client/deny.toml

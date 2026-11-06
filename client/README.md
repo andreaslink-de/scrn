@@ -3,6 +3,32 @@
 In development. It runs on Ubuntu 24.04 with GNOME on Wayland; other
 desktops follow later (see `docs/PLAN.md`).
 
+## Install
+
+Packages for Linux come with each client release (`client-v*` tags):
+
+- **Debian/Ubuntu:** `sudo apt install ./SCRN_<version>_amd64.deb`. It
+  installs `scrn` to `/usr/bin`, a menu entry and the icon.
+- **AppImage:** `chmod +x SCRN_<version>_amd64.AppImage`, then start it.
+  Autostart (in the settings) points to the AppImage file, so keep it in
+  one place, e.g. `~/Applications`.
+
+Start SCRN from the app menu; it lives in the tray. For a keyboard
+shortcut, add `scrn capture` (and `scrn copy-last`) under *Settings →
+Keyboard → Custom Shortcuts*; with the AppImage use its full path
+followed by `capture`.
+
+## Build packages
+
+```sh
+cargo install tauri-cli --version "~2.12.4" --locked
+cd client
+cargo tauri build --bundles deb,appimage
+```
+
+The packages land in `target/release/bundle/deb` and
+`target/release/bundle/appimage`.
+
 ## Build and run
 
 ```sh
