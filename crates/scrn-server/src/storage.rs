@@ -1,5 +1,7 @@
-//! Screenshot files under `<data>/files`: `<id>.png` and `<id>.thumb.png`.
-//! The IDs are fresh UUIDs, so a file name can never be chosen by a client.
+//! Screenshot files under `<data>/files/<user id>/`: `<id>.png` and
+//! `<id>.thumb.png`. Both parts are numbers or fresh UUIDs from the server,
+//! so a path can never be chosen by a client, and the directory names do
+//! not reveal user names.
 
 use std::io;
 use std::path::{Path, PathBuf};
@@ -7,20 +9,33 @@ use std::path::{Path, PathBuf};
 use tokio::io::AsyncWriteExt;
 use uuid::Uuid;
 
-pub fn image_path(files_dir: &Path, id: Uuid) -> PathBuf {
-    files_dir.join(format!("{id}.png"))
+/// The directory of all files of a user.
+pub fn user_dir(files_dir: &Path, user_id: i64) -> PathBuf {
+    files_dir.join(user_id.to_string())
 }
 
-pub fn thumb_path(files_dir: &Path, id: Uuid) -> PathBuf {
-    files_dir.join(format!("{id}.thumb.png"))
+pub fn image_path(files_dir: &Path, user_id: i64, id: Uuid) -> PathBuf {
+    user_dir(files_dir, user_id).join(format!("{id}.png"))
 }
 
-/// Writes the image and its thumbnail. Existing files are never replaced.
-/// On error, the files this call created are removed again.
-pub async fn write(files_dir: &Path, id: Uuid, image: &[u8], thumb: &[u8]) -> io::Result<()> {
-    let image_path = image_path(files_dir, id);
+pub fn thumb_path(files_dir: &Path, user_id: i64, id: Uuid) -> PathBuf {
+    user_dir(files_dir, user_id).join(format!("{id}.thumb.png"))
+}
+
+/// Writes the image and its thumbnail, creating the user directory if
+/// needed. Existing files are never replaced. On error, the files this call
+/// created are removed again.
+pub async fn write(
+    files_dir: &Path,
+    user_id: i64,
+    id: Uuid,
+    image: &[u8],
+    thumb: &[u8],
+) -> io::Result<()> {
+    tokio::fs::create_dir_all(user_dir(files_dir, user_id)).await?;
+    let image_path = image_path(files_dir, user_id, id);
     write_new(&image_path, image).await?;
-    if let Err(err) = write_new(&thumb_path(files_dir, id), thumb).await {
+    if let Err(err) = write_new(&thumb_path(files_dir, user_id, id), thumb).await {
         let _ = tokio::fs::remove_file(&image_path).await;
         return Err(err);
     }
@@ -47,9 +62,12 @@ async fn write_new(path: &Path, data: &[u8]) -> io::Result<()> {
 }
 
 /// Removes the image and its thumbnail. Missing files are not an error.
-pub async fn remove(files_dir: &Path, id: Uuid) -> io::Result<()> {
+pub async fn remove(files_dir: &Path, user_id: i64, id: Uuid) -> io::Result<()> {
     let mut first_error = None;
-    for path in [image_path(files_dir, id), thumb_path(files_dir, id)] {
+    for path in [
+        image_path(files_dir, user_id, id),
+        thumb_path(files_dir, user_id, id),
+    ] {
         match tokio::fs::remove_file(&path).await {
             Ok(()) => {}
             Err(err) if err.kind() == io::ErrorKind::NotFound => {}
@@ -68,26 +86,28 @@ mod tests {
     #[tokio::test]
     async fn write_and_remove() {
         let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
         let id = Uuid::new_v4();
-        write(dir.path(), id, b"image", b"thumb").await.unwrap();
-        assert_eq!(std::fs::read(image_path(dir.path(), id)).unwrap(), b"image");
-        assert_eq!(std::fs::read(thumb_path(dir.path(), id)).unwrap(), b"thumb");
+        write(d, 7, id, b"image", b"thumb").await.unwrap();
+        assert_eq!(image_path(d, 7, id), d.join("7").join(format!("{id}.png")));
+        assert_eq!(std::fs::read(image_path(d, 7, id)).unwrap(), b"image");
+        assert_eq!(std::fs::read(thumb_path(d, 7, id)).unwrap(), b"thumb");
 
         // Existing files are never overwritten, and a failed write leaves
         // them alone.
-        assert!(write(dir.path(), id, b"other", b"other").await.is_err());
-        assert_eq!(std::fs::read(image_path(dir.path(), id)).unwrap(), b"image");
+        assert!(write(d, 7, id, b"other", b"other").await.is_err());
+        assert_eq!(std::fs::read(image_path(d, 7, id)).unwrap(), b"image");
 
         // If the thumbnail cannot be written, the new image is removed.
         let other = Uuid::new_v4();
-        std::fs::write(thumb_path(dir.path(), other), b"blocker").unwrap();
-        assert!(write(dir.path(), other, b"image", b"thumb").await.is_err());
-        assert!(!image_path(dir.path(), other).exists());
+        std::fs::write(thumb_path(d, 7, other), b"blocker").unwrap();
+        assert!(write(d, 7, other, b"image", b"thumb").await.is_err());
+        assert!(!image_path(d, 7, other).exists());
 
-        remove(dir.path(), id).await.unwrap();
-        assert!(!image_path(dir.path(), id).exists());
-        assert!(!thumb_path(dir.path(), id).exists());
+        remove(d, 7, id).await.unwrap();
+        assert!(!image_path(d, 7, id).exists());
+        assert!(!thumb_path(d, 7, id).exists());
         // Removing again is fine.
-        remove(dir.path(), id).await.unwrap();
+        remove(d, 7, id).await.unwrap();
     }
 }

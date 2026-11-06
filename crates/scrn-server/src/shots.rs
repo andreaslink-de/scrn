@@ -59,7 +59,7 @@ pub async fn delete(
     if !screenshots::delete_for_user(db, id, user_id).await? {
         return Ok(false);
     }
-    if let Err(err) = storage::remove(files_dir, id).await {
+    if let Err(err) = storage::remove(files_dir, user_id, id).await {
         tracing::warn!(screenshot_id = %id, error = %err, "removing screenshot files failed");
     }
     tracing::info!(screenshot_id = %id, user_id, "screenshot deleted");

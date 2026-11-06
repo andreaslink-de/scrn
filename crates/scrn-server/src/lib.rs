@@ -162,6 +162,7 @@ pub async fn init_state_with_clock(
         })?;
     }
     let db = db::connect(&config.database_path()).await?;
+    jobs::move_legacy_files(&db, &config.files_dir()).await?;
     let passkeys = passkey::build(&config.base_url).map(|w| Arc::new(passkey::Passkeys::new(w)));
     if passkeys.is_none() {
         tracing::warn!(

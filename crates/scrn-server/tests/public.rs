@@ -55,11 +55,16 @@ fn assert_same_404(response: &TestResponse, reference: &TestResponse) {
 
 #[tokio::test]
 async fn public_image_is_served_with_safe_headers() {
-    let (server, _, mut api) = setup().await;
+    let (server, user, mut api) = setup().await;
     let info = upload_info(&mut api, "?visibility=public").await;
     let path = short_path(&info);
     let id = Uuid::parse_str(&info.id).unwrap();
-    let stored = std::fs::read(storage::image_path(&server.state.config.files_dir(), id)).unwrap();
+    let stored = std::fs::read(storage::image_path(
+        &server.state.config.files_dir(),
+        user.id,
+        id,
+    ))
+    .unwrap();
 
     let mut visitor = server.client("203.0.113.7");
     for url in [path.clone(), format!("{path}.png")] {
@@ -194,11 +199,16 @@ async fn fixed_routes_win_and_reserved_names_are_never_served() {
 
 #[tokio::test]
 async fn missing_file_gives_404() {
-    let (server, _, mut api) = setup().await;
+    let (server, user, mut api) = setup().await;
     let reference = unknown(&server).await;
     let info = upload_info(&mut api, "?visibility=public").await;
     let id = Uuid::parse_str(&info.id).unwrap();
-    std::fs::remove_file(storage::image_path(&server.state.config.files_dir(), id)).unwrap();
+    std::fs::remove_file(storage::image_path(
+        &server.state.config.files_dir(),
+        user.id,
+        id,
+    ))
+    .unwrap();
     let response = server.client("203.0.113.7").get(&short_path(&info)).await;
     assert_same_404(&response, &reference);
 }

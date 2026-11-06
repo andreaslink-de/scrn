@@ -94,7 +94,7 @@ async fn expired_links_become_private_and_stay_in_the_gallery() {
     let gallery = browser.get("/app?filter=private").await;
     assert!(gallery.body.contains(&info.id));
     let id = Uuid::parse_str(&info.id).unwrap();
-    assert!(storage::image_path(&s.server.state.config.files_dir(), id).exists());
+    assert!(storage::image_path(&s.server.state.config.files_dir(), s.user.id, id).exists());
     assert_eq!(pass(&s).await.expired_links, 0);
 }
 
@@ -193,26 +193,92 @@ async fn expired_sessions_are_removed() {
 #[tokio::test]
 async fn orphaned_files_are_removed_after_an_hour() {
     let mut s = setup().await;
+    let alice = s.user.id;
+    let bob = s.server.create_user("bob", Role::User).await.id;
     let kept = shot(&mut s.api, "").await;
     let kept_id = Uuid::parse_str(&kept.id).unwrap();
     let dir = s.server.state.config.files_dir();
     let orphan = Uuid::new_v4();
-    std::fs::write(storage::image_path(&dir, orphan), b"x").unwrap();
-    std::fs::write(storage::thumb_path(&dir, orphan), b"x").unwrap();
+    std::fs::create_dir_all(storage::user_dir(&dir, bob)).unwrap();
+    std::fs::write(storage::image_path(&dir, alice, orphan), b"x").unwrap();
+    std::fs::write(storage::thumb_path(&dir, alice, orphan), b"x").unwrap();
+    // A copy of Alice's image in Bob's directory can never be served.
+    std::fs::write(storage::image_path(&dir, bob, kept_id), b"x").unwrap();
+    // Left over from the flat layout: without a screenshot it goes, with
+    // one it stays until the startup move picks it up.
+    std::fs::write(dir.join(format!("{orphan}.png")), b"x").unwrap();
+    std::fs::write(dir.join(format!("{kept_id}.thumb.png")), b"x").unwrap();
+    // Files and directories we did not write are never touched.
     std::fs::write(dir.join("notes.txt"), b"keep me").unwrap();
+    std::fs::create_dir_all(dir.join("lost+found")).unwrap();
+    std::fs::write(dir.join("lost+found").join(format!("{orphan}.png")), b"x").unwrap();
+    std::fs::write(storage::user_dir(&dir, alice).join("notes.txt"), b"keep me").unwrap();
 
     // Fresh files may belong to an upload in progress.
     assert_eq!(pass(&s).await.orphan_files, 0);
-    assert!(storage::image_path(&dir, orphan).exists());
+    assert!(storage::image_path(&dir, alice, orphan).exists());
 
     let later = SystemTime::now() + ORPHAN_MIN_AGE + Duration::from_secs(1);
     let removed = jobs::remove_orphans(&s.server.state, &dir, later, ORPHAN_MIN_AGE)
         .await
         .unwrap();
-    assert_eq!(removed, 2);
-    assert!(!storage::image_path(&dir, orphan).exists());
-    assert!(!storage::thumb_path(&dir, orphan).exists());
-    assert!(storage::image_path(&dir, kept_id).exists());
-    assert!(storage::thumb_path(&dir, kept_id).exists());
+    assert_eq!(removed, 4);
+    assert!(!storage::image_path(&dir, alice, orphan).exists());
+    assert!(!storage::thumb_path(&dir, alice, orphan).exists());
+    assert!(!storage::image_path(&dir, bob, kept_id).exists());
+    assert!(!dir.join(format!("{orphan}.png")).exists());
+    assert!(dir.join(format!("{kept_id}.thumb.png")).exists());
+    assert!(storage::image_path(&dir, alice, kept_id).exists());
+    assert!(storage::thumb_path(&dir, alice, kept_id).exists());
     assert!(dir.join("notes.txt").exists());
+    assert!(
+        dir.join("lost+found")
+            .join(format!("{orphan}.png"))
+            .exists()
+    );
+    assert!(storage::user_dir(&dir, alice).join("notes.txt").exists());
+}
+
+#[tokio::test]
+async fn files_of_the_flat_layout_move_into_user_directories() {
+    let mut s = setup().await;
+    let info = shot(&mut s.api, "?visibility=public").await;
+    let id = Uuid::parse_str(&info.id).unwrap();
+    let dir = s.server.state.config.files_dir();
+    let image = storage::image_path(&dir, s.user.id, id);
+    let thumb = storage::thumb_path(&dir, s.user.id, id);
+    let data = std::fs::read(&image).unwrap();
+    // Put the files where the flat layout stored them.
+    let flat_image = dir.join(format!("{id}.png"));
+    let flat_thumb = dir.join(format!("{id}.thumb.png"));
+    std::fs::rename(&image, &flat_image).unwrap();
+    std::fs::rename(&thumb, &flat_thumb).unwrap();
+    std::fs::remove_dir(storage::user_dir(&dir, s.user.id)).unwrap();
+    let unknown = dir.join(format!("{}.png", Uuid::new_v4()));
+    std::fs::write(&unknown, b"x").unwrap();
+    assert_eq!(
+        s.visitor.get(&path(&info)).await.status,
+        StatusCode::NOT_FOUND
+    );
+
+    let moved = jobs::move_legacy_files(&s.server.state.db, &dir)
+        .await
+        .unwrap();
+    assert_eq!(moved, 2);
+    assert!(!flat_image.exists() && !flat_thumb.exists());
+    assert_eq!(std::fs::read(&image).unwrap(), data);
+    assert!(thumb.exists());
+    // Files without a screenshot are left for the orphan cleanup.
+    assert!(unknown.exists());
+    let response = s.visitor.get(&path(&info)).await;
+    assert_eq!(response.status, StatusCode::OK);
+    assert_eq!(response.bytes, data);
+
+    // Running it again changes nothing.
+    assert_eq!(
+        jobs::move_legacy_files(&s.server.state.db, &dir)
+            .await
+            .unwrap(),
+        0
+    );
 }

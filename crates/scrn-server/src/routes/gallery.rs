@@ -275,9 +275,9 @@ async fn serve_file(
     let shot = load(state, user, id).await?;
     let files = state.config.files_dir();
     let path = if thumb {
-        storage::thumb_path(&files, shot.id)
+        storage::thumb_path(&files, shot.user_id, shot.id)
     } else {
-        storage::image_path(&files, shot.id)
+        storage::image_path(&files, shot.user_id, shot.id)
     };
     let data = tokio::fs::read(&path).await.map_err(|err| {
         tracing::warn!(screenshot_id = %shot.id, error = %err, "screenshot file missing");

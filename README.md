@@ -134,7 +134,8 @@ curl -X POST -H "Authorization: Bearer scrn_…" -H "Content-Type: image/png" \
 
 Uploads are PNG only (at most 20 MiB and 100 megapixels). The server decodes
 and re-encodes every image, which removes all metadata, and stores it with a
-thumbnail under `data/files`. Public screenshots get a short link;
+thumbnail under `data/files/<user id>/` (the numeric ID, never the user
+name; files of the earlier flat layout are moved there at startup). Public screenshots get a short link;
 `expires_in_days` sets its lifetime (default: the user's setting, 0 means
 never). `GET /api/v1/screenshots?limit=N` lists the newest screenshots and
 `DELETE /api/v1/screenshots/<id>` deletes one.

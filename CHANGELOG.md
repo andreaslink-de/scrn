@@ -6,6 +6,11 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- Screenshot files are stored per user in `files/<user id>/`. Files of the
+  earlier flat layout are moved there at startup.
+
 ## [0.1.0] - unreleased
 
 First release of the SCRN server.
