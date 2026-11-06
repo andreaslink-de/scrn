@@ -300,6 +300,44 @@ window.addEventListener("resize", fit);
 
 // --- Start ---------------------------------------------------------------
 
+const note = (line) => invoke("note", { line }).catch(() => {});
+
+// The IPC hands raw bytes over as ArrayBuffer, or as a plain array of
+// numbers when it falls back to JSON.
+const toBytes = (data) => {
+  if (data instanceof ArrayBuffer) {
+    return new Uint8Array(data);
+  }
+  if (ArrayBuffer.isView(data)) {
+    return new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+  }
+  return Uint8Array.from(data);
+};
+
+// Decodes the PNG. WebKitGTK cannot always decode a Blob with
+// createImageBitmap, so an <img> from a blob: URL is the fallback; both
+// stay same-origin and keep the canvas exportable.
+const decode = async (data) => {
+  const kind = Object.prototype.toString.call(data);
+  const bytes = toBytes(data);
+  note(`editor image: ${kind}, ${bytes.length} bytes, head ${Array.from(bytes.slice(0, 4)).join(",")}`);
+  const blob = new Blob([bytes], { type: "image/png" });
+  try {
+    return await createImageBitmap(blob);
+  } catch (err) {
+    note(`createImageBitmap failed: ${err}; using <img>`);
+  }
+  const url = URL.createObjectURL(blob);
+  try {
+    const img = new Image();
+    img.src = url;
+    await img.decode();
+    return img;
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+};
+
 translate();
 selectTool("arrow");
 selectColor(color);
@@ -307,8 +345,7 @@ updateButtons();
 
 (async () => {
   try {
-    const bytes = await invoke("edit_image");
-    image = await createImageBitmap(new Blob([bytes], { type: "image/png" }));
+    image = await decode(await invoke("edit_image"));
     canvas.width = image.width;
     canvas.height = image.height;
     fit();

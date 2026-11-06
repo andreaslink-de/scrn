@@ -478,9 +478,14 @@ fn save_edit(
     state: tauri::State<'_, AppState>,
     request: tauri::ipc::Request<'_>,
 ) -> Result<String, String> {
-    let tauri::ipc::InvokeBody::Raw(png) = request.body() else {
-        return Err("expected the PNG as raw body".to_owned());
+    // Raw bytes, or a JSON array of numbers when the IPC falls back to JSON.
+    let png: std::borrow::Cow<'_, [u8]> = match request.body() {
+        tauri::ipc::InvokeBody::Raw(bytes) => bytes.as_slice().into(),
+        tauri::ipc::InvokeBody::Json(value) => serde_json::from_value::<Vec<u8>>(value.clone())
+            .map_err(|_| "expected the PNG as body".to_owned())?
+            .into(),
     };
+    let png = png.as_ref();
     let (width, height) = lock(&state.edit)
         .as_ref()
         .map(|c| (c.width, c.height))
@@ -488,9 +493,14 @@ fn save_edit(
     capture::check_edit(png, width, height).map_err(|e| e.to_string())?;
     let path = capture::save(png).map_err(|e| e.to_string())?;
     report::note(format!(
-        "edit saved to {} ({} bytes)",
+        "edit saved to {} ({} bytes, {} body)",
         path.display(),
-        png.len()
+        png.len(),
+        if matches!(request.body(), tauri::ipc::InvokeBody::Raw(_)) {
+            "raw"
+        } else {
+            "json"
+        }
     ));
     *lock(&state.edit) = None;
     let _ = window.close();
