@@ -293,6 +293,12 @@ scripts/backup.sh /path/to/backups
 Run it from the directory with `compose.yaml`, for example daily from cron,
 and copy the archives off the machine.
 
+Administrators can also download a backup in the browser: *Administration →
+Backup → Download backup*. The archive (`scrn-YYYYMMDD-HHMMSS.tar`) has the
+same content, uncompressed because PNG files are compressed already. It is
+streamed directly and never stored on the server; only one download runs at
+a time.
+
 To restore, stop the server, replace the data directory with the archive's
 content and start again:
 
@@ -301,6 +307,7 @@ docker compose down
 mv data data.old                      # keep until the restore is verified
 mkdir data
 tar -xzf /path/to/backups/scrn-20261106-120000.tar.gz -C data
+# a download from the administration: tar -xf scrn-20261106-120000.tar -C data
 sudo chown -R "${SCRN_UID:-1000}:${SCRN_GID:-1000}" data
 docker compose up -d
 ```

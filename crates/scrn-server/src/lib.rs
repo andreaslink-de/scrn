@@ -3,6 +3,7 @@
 
 pub mod api;
 pub mod auth;
+pub mod backup;
 pub mod clock;
 pub mod config;
 pub mod cookies;
@@ -24,6 +25,7 @@ pub mod routes;
 pub mod short_id;
 pub mod shots;
 pub mod storage;
+pub mod tar;
 
 use std::future::Future;
 use std::net::SocketAddr;
@@ -79,6 +81,8 @@ pub struct AppState {
     pub image_permits: Arc<tokio::sync::Semaphore>,
     /// Passkey support; `None` if the base URL has no domain name.
     pub passkeys: Option<Arc<passkey::Passkeys>>,
+    /// Held while a backup download runs, so only one runs at a time.
+    pub backup_permit: Arc<tokio::sync::Semaphore>,
 }
 
 impl AppState {
@@ -163,6 +167,7 @@ pub async fn init_state_with_clock(
     }
     let db = db::connect(&config.database_path()).await?;
     jobs::move_legacy_files(&db, &config.files_dir()).await?;
+    backup::remove_stale_snapshots(&config.data_dir).await;
     let passkeys = passkey::build(&config.base_url).map(|w| Arc::new(passkey::Passkeys::new(w)));
     if passkeys.is_none() {
         tracing::warn!(
@@ -192,6 +197,7 @@ pub async fn init_state_with_clock(
         dummy_password_hash,
         image_permits: Arc::new(tokio::sync::Semaphore::new(IMAGE_WORKERS)),
         passkeys,
+        backup_permit: Arc::new(tokio::sync::Semaphore::new(1)),
     })
 }
 

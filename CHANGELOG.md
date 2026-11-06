@@ -6,6 +6,12 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Backup download in the administration: a tar archive with a consistent
+  database snapshot and all screenshot files, streamed without storing a
+  copy on the server.
+
 ### Changed
 
 - Screenshot files are stored per user in `files/<user id>/`. Files of the

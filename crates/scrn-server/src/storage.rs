@@ -3,6 +3,7 @@
 //! so a path can never be chosen by a client, and the directory names do
 //! not reveal user names.
 
+use std::fs::Metadata;
 use std::io;
 use std::path::{Path, PathBuf};
 
@@ -79,6 +80,72 @@ pub async fn remove(files_dir: &Path, user_id: i64, id: Uuid) -> io::Result<()> 
     first_error.map_or(Ok(()), Err)
 }
 
+/// The regular files in `dir` whose names we write, with their IDs.
+pub async fn screenshot_files(dir: &Path) -> Vec<(Uuid, PathBuf, Metadata)> {
+    let mut files = Vec::new();
+    for (name, path, meta) in list(dir).await {
+        if let Some(id) = screenshot_id(&name).filter(|_| meta.is_file()) {
+            files.push((id, path, meta));
+        }
+    }
+    files
+}
+
+/// The user directories in `dir`: subdirectories named by a user ID.
+pub async fn user_dirs(dir: &Path) -> Vec<(i64, PathBuf)> {
+    let mut dirs = Vec::new();
+    for (name, path, meta) in list(dir).await {
+        let user_id = name
+            .parse::<i64>()
+            .ok()
+            .filter(|id| *id > 0 && id.to_string() == name);
+        if let Some(user_id) = user_id.filter(|_| meta.is_dir()) {
+            dirs.push((user_id, path));
+        }
+    }
+    dirs
+}
+
+/// Entries of `dir` with UTF-8 names. Listing errors are logged, and what
+/// was read until then is returned.
+pub async fn list(dir: &Path) -> Vec<(String, PathBuf, Metadata)> {
+    let mut found = Vec::new();
+    let mut entries = match tokio::fs::read_dir(dir).await {
+        Ok(entries) => entries,
+        Err(err) => {
+            tracing::warn!(error = %err, "cannot list the files directory");
+            return found;
+        }
+    };
+    loop {
+        let entry = match entries.next_entry().await {
+            Ok(Some(entry)) => entry,
+            Ok(None) => break,
+            Err(err) => {
+                tracing::warn!(error = %err, "listing the files directory failed");
+                break;
+            }
+        };
+        // `DirEntry::metadata` does not follow symbolic links, so a link
+        // is neither a file nor a directory here and is never touched.
+        let (Ok(name), Ok(meta)) = (entry.file_name().into_string(), entry.metadata().await) else {
+            continue;
+        };
+        found.push((name, entry.path(), meta));
+    }
+    found
+}
+
+/// The screenshot ID of a file name we write, if it is one.
+pub fn screenshot_id(name: &str) -> Option<Uuid> {
+    let stem = name
+        .strip_suffix(".thumb.png")
+        .or_else(|| name.strip_suffix(".png"))?;
+    // Only the canonical form we write: hyphenated lowercase.
+    let id = Uuid::parse_str(stem).ok()?;
+    (id.to_string() == stem).then_some(id)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -109,5 +176,23 @@ mod tests {
         assert!(!thumb_path(d, 7, id).exists());
         // Removing again is fine.
         remove(d, 7, id).await.unwrap();
+    }
+
+    #[test]
+    fn file_names() {
+        let id = Uuid::new_v4();
+        assert_eq!(screenshot_id(&format!("{id}.png")), Some(id));
+        assert_eq!(screenshot_id(&format!("{id}.thumb.png")), Some(id));
+        let upper = id.to_string().to_uppercase();
+        for name in [
+            format!("{upper}.png"),
+            format!("{id}.jpg"),
+            format!("{id}"),
+            format!("{}.png", id.simple()),
+            "notes.txt".to_owned(),
+            ".png".to_owned(),
+        ] {
+            assert_eq!(screenshot_id(&name), None, "{name}");
+        }
     }
 }

@@ -186,3 +186,7 @@ passkey.duplicate = This passkey is already registered.
 passkey.busy = The server is busy. Please try again in a moment.
 error.passkey_name = The name must be between 1 and 100 characters long.
 error.passkey_last = This is your last way to sign in and cannot be deleted.
+admin.backup = Backup
+admin.backup.hint = Downloads a tar archive with a consistent copy of the database and all screenshots, taken while the server keeps running. Nothing is stored on the server. To restore, see "Backup and restore" in the README.
+admin.backup.download = Download backup
+error.backup_running = A backup download is already running. Please wait until it has finished.

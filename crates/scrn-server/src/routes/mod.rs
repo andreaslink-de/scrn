@@ -63,6 +63,7 @@ pub fn router(state: AppState) -> Router {
         .route("/logout", post(login::logout))
         .route("/invite/{token}", get(invite::show).post(invite::submit))
         .route("/admin", get(admin::show))
+        .route("/admin/backup", post(admin::download_backup))
         .route("/admin/invites", post(admin::create_invite))
         .route("/admin/invites/{id}/delete", post(admin::delete_invite))
         .route("/admin/users/{id}/disable", post(admin::disable_user))
