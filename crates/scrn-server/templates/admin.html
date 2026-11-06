@@ -12,16 +12,16 @@
 <h2 id="users-title">{{ page.t("admin.users") }}</h2>
 <p class="muted">{{ page.tf("admin.quota.hint", "default", default_quota.as_str()) }}</p>
 <div class="table-wrap">
-<table>
+<table class="stack">
 <thead><tr><th scope="col">{{ page.t("admin.col.username") }}</th><th scope="col">{{ page.t("admin.col.role") }}</th><th scope="col">{{ page.t("admin.col.status") }}</th><th scope="col">{{ page.t("admin.col.storage") }}</th><th scope="col">{{ page.t("admin.col.quota") }}</th><th scope="col">{{ page.t("admin.col.actions") }}</th></tr></thead>
 <tbody>
 {% for user in users %}
 <tr>
-<td>{{ user.username }}{% if user.is_self %} <span class="badge">{{ page.t("admin.you") }}</span>{% endif %}</td>
-<td>{{ page.t(user.role_key) }}</td>
-<td>{% if user.disabled %}{{ page.t("status.disabled") }}{% else %}{{ page.t("status.active") }}{% endif %}</td>
-<td>{% let usage = user.usage %}{% include "usage.html" %}</td>
-<td>
+<td data-label="{{ page.t("admin.col.username") }}">{{ user.username }}{% if user.is_self %} <span class="badge">{{ page.t("admin.you") }}</span>{% endif %}</td>
+<td data-label="{{ page.t("admin.col.role") }}">{{ page.t(user.role_key) }}</td>
+<td data-label="{{ page.t("admin.col.status") }}">{% if user.disabled %}{{ page.t("status.disabled") }}{% else %}{{ page.t("status.active") }}{% endif %}</td>
+<td data-label="{{ page.t("admin.col.storage") }}">{% let usage = user.usage %}{% include "usage.html" %}</td>
+<td data-label="{{ page.t("admin.col.quota") }}">
 <form class="inline-form" method="post" action="/admin/users/{{ user.id }}/quota">
 <input type="hidden" name="csrf" value="{{ csrf }}">
 <div class="field">
@@ -31,7 +31,7 @@
 <button type="submit" class="secondary small">{{ page.t("admin.quota.save") }}</button>
 </form>
 </td>
-<td>{% if !user.is_self %}
+<td data-label="{{ page.t("admin.col.actions") }}">{% if !user.is_self %}
 <form method="post" action="/admin/users/{{ user.id }}/{% if user.disabled %}enable{% else %}disable{% endif %}">
 <input type="hidden" name="csrf" value="{{ csrf }}">
 <button type="submit" class="{% if user.disabled %}secondary{% else %}danger{% endif %} small">{% if user.disabled %}{{ page.t("admin.enable") }}{% else %}{{ page.t("admin.disable") }}{% endif %}</button>
@@ -58,15 +58,15 @@
 <p>{{ page.t("admin.invite.none") }}</p>
 {% else %}
 <div class="table-wrap">
-<table>
+<table class="stack">
 <thead><tr><th scope="col">{{ page.t("admin.col.created") }}</th><th scope="col">{{ page.t("admin.col.expires") }}</th><th scope="col">{{ page.t("admin.col.status") }}</th><th scope="col">{{ page.t("admin.col.actions") }}</th></tr></thead>
 <tbody>
 {% for invite in invites %}
 <tr>
-<td>{{ page.time(invite.created_at) }}</td>
-<td>{{ page.time(invite.expires_at) }}</td>
-<td>{{ page.t(invite.status_key) }}{% if let Some(name) = invite.used_by %}: {{ name }}{% endif %}</td>
-<td>{% if invite.open %}<form method="post" action="/admin/invites/{{ invite.id }}/delete"><input type="hidden" name="csrf" value="{{ csrf }}"><button type="submit" class="danger small">{{ page.t("admin.invite.revoke") }}</button></form>{% endif %}</td>
+<td data-label="{{ page.t("admin.col.created") }}">{{ page.time(invite.created_at) }}</td>
+<td data-label="{{ page.t("admin.col.expires") }}">{{ page.time(invite.expires_at) }}</td>
+<td data-label="{{ page.t("admin.col.status") }}">{{ page.t(invite.status_key) }}{% if let Some(name) = invite.used_by %}: {{ name }}{% endif %}</td>
+<td data-label="{{ page.t("admin.col.actions") }}">{% if invite.open %}<form method="post" action="/admin/invites/{{ invite.id }}/delete"><input type="hidden" name="csrf" value="{{ csrf }}"><button type="submit" class="danger small">{{ page.t("admin.invite.revoke") }}</button></form>{% endif %}</td>
 </tr>
 {% endfor %}
 </tbody>

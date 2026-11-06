@@ -596,3 +596,75 @@ details[open] summary {
     grid-template-columns: 1fr;
   }
 }
+
+/* Phones: tables become one card per row, with the column name in front
+   of every value. */
+@media (max-width: 40rem) {
+  table.stack thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+
+  table.stack,
+  table.stack tbody,
+  table.stack tr,
+  table.stack td {
+    display: block;
+    width: 100%;
+  }
+
+  table.stack tr {
+    border-bottom: 1px solid var(--border);
+    padding: 0.5rem 0;
+  }
+
+  table.stack td {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.25rem 1rem;
+    border: 0;
+    padding: 0.3rem 0;
+  }
+
+  table.stack td::before {
+    content: attr(data-label);
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+  }
+
+  table.stack td:empty {
+    display: none;
+  }
+
+  table.stack .usage {
+    flex: 1 1 12rem;
+    justify-items: end;
+  }
+
+  .copy-row input {
+    font-size: 1rem;
+  }
+}
+
+/* Touch screens: comfortable tap targets. */
+@media (pointer: coarse) {
+  button,
+  a.button,
+  .filters a,
+  .nav a {
+    min-height: 2.75rem;
+  }
+
+  .nav a,
+  .filters a {
+    display: inline-flex;
+    align-items: center;
+  }
+}
