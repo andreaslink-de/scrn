@@ -3,6 +3,12 @@
 use std::fmt;
 use std::net::IpAddr;
 use std::str::FromStr;
+use std::sync::{Arc, RwLock};
+use std::time::Duration;
+
+/// How often host names in `SCRN_TRUSTED_PROXIES` are resolved again, so a
+/// proxy container that got a new address after a restart is picked up.
+pub const PROXY_REFRESH_INTERVAL: Duration = Duration::from_secs(30);
 
 /// An IP network in CIDR notation, e.g. `172.18.0.0/16` or `::1/128`.
 /// A plain address is treated as a single-host network.
@@ -69,29 +75,136 @@ impl fmt::Display for IpNet {
     }
 }
 
-/// The set of reverse proxies whose forwarding headers are trusted.
+/// The set of reverse proxies whose forwarding headers are trusted: fixed
+/// networks plus host names (such as a proxy container's name in a Docker
+/// network), whose current addresses are looked up by [`refresh`].
 /// An empty set trusts nobody.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+///
+/// [`refresh`]: TrustedProxies::refresh
+#[derive(Debug, Clone, Default)]
 pub struct TrustedProxies {
     nets: Vec<IpNet>,
+    hosts: Vec<String>,
+    /// Addresses of `hosts` from the last lookup, shared by all clones.
+    resolved: Arc<RwLock<Vec<IpAddr>>>,
 }
+
+impl PartialEq for TrustedProxies {
+    fn eq(&self, other: &Self) -> bool {
+        self.nets == other.nets && self.hosts == other.hosts
+    }
+}
+
+impl Eq for TrustedProxies {}
 
 impl TrustedProxies {
     pub fn new(nets: Vec<IpNet>) -> Self {
-        Self { nets }
+        Self::with_hosts(nets, Vec::new())
+    }
+
+    pub fn with_hosts(nets: Vec<IpNet>, hosts: Vec<String>) -> Self {
+        Self {
+            nets,
+            hosts,
+            resolved: Arc::default(),
+        }
     }
 
     pub fn is_empty(&self) -> bool {
-        self.nets.is_empty()
+        self.nets.is_empty() && self.hosts.is_empty()
     }
 
     pub fn contains(&self, ip: IpAddr) -> bool {
-        self.nets.iter().any(|net| net.contains(ip))
+        let ip = normalize(ip);
+        self.nets.iter().any(|net| net.contains(ip)) || self.read().contains(&ip)
     }
 
     pub fn nets(&self) -> &[IpNet] {
         &self.nets
     }
+
+    pub fn hosts(&self) -> &[String] {
+        &self.hosts
+    }
+
+    /// Looks up the host names and replaces the trusted addresses with the
+    /// result. A name that cannot be resolved trusts nothing until it can
+    /// be again: its old address may belong to another container by now.
+    /// Returns the addresses now trusted through host names.
+    pub async fn refresh(&self) -> Vec<IpAddr> {
+        let mut found = Vec::new();
+        for host in &self.hosts {
+            match tokio::net::lookup_host((host.as_str(), 0)).await {
+                Ok(addrs) => {
+                    for addr in addrs {
+                        let ip = normalize(addr.ip());
+                        if !found.contains(&ip) {
+                            found.push(ip);
+                        }
+                    }
+                }
+                Err(err) => {
+                    tracing::warn!(host = %host, error = %err, "cannot resolve trusted proxy");
+                }
+            }
+        }
+        found.sort();
+        let mut current = self
+            .resolved
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if *current != found {
+            tracing::info!(addresses = ?found, "trusted proxy addresses changed");
+            current.clone_from(&found);
+        }
+        found
+    }
+
+    /// Resolves the host names again every [`PROXY_REFRESH_INTERVAL`]; call
+    /// [`refresh`](Self::refresh) once before. Does nothing without host
+    /// names.
+    pub fn spawn_refresh(&self) -> Option<tokio::task::JoinHandle<()>> {
+        if self.hosts.is_empty() {
+            return None;
+        }
+        let proxies = self.clone();
+        Some(tokio::spawn(async move {
+            let mut ticker = tokio::time::interval(PROXY_REFRESH_INTERVAL);
+            ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+            // The first tick completes at once; the caller has just resolved.
+            ticker.tick().await;
+            loop {
+                ticker.tick().await;
+                proxies.refresh().await;
+            }
+        }))
+    }
+
+    fn read(&self) -> std::sync::RwLockReadGuard<'_, Vec<IpAddr>> {
+        self.resolved
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+}
+
+/// True for a DNS host name such as `nginx-proxy-manager` or
+/// `proxy.internal`: labels of letters, digits, `-` and `_`, at least one
+/// letter, so that a mistyped address like `10.0.0.256` is not taken for a
+/// name.
+pub fn is_host_name(value: &str) -> bool {
+    let label_ok = |label: &str| {
+        !label.is_empty()
+            && label.len() <= 63
+            && !label.starts_with('-')
+            && !label.ends_with('-')
+            && label
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    };
+    !value.is_empty()
+        && value.len() <= 253
+        && value.chars().any(|c| c.is_ascii_alphabetic())
+        && value.split('.').all(label_ok)
 }
 
 /// Determines the client IP of a request.
@@ -258,5 +371,59 @@ mod tests {
         let proxies = TrustedProxies::default();
         assert!(proxies.is_empty());
         assert!(!proxies.contains(ip("127.0.0.1")));
+    }
+
+    #[test]
+    fn host_names() {
+        for ok in [
+            "npm",
+            "nginx-proxy-manager",
+            "proxy.internal",
+            "npm_app_1",
+            "a1",
+        ] {
+            assert!(is_host_name(ok), "{ok}");
+        }
+        for bad in [
+            "",
+            "10.0.0.1",
+            "1.2.3",
+            "a..b",
+            "-a",
+            "a-",
+            "a b",
+            "a/b",
+            "ä",
+            &"a".repeat(64),
+        ] {
+            assert!(!is_host_name(bad), "{bad}");
+        }
+    }
+
+    #[tokio::test]
+    async fn host_names_are_trusted_once_resolved() {
+        let proxies = TrustedProxies::with_hosts(Vec::new(), vec!["localhost".to_owned()]);
+        assert!(!proxies.is_empty());
+        assert!(!proxies.contains(ip("127.0.0.1")));
+        let found = proxies.refresh().await;
+        assert!(found.contains(&ip("127.0.0.1")), "{found:?}");
+        assert!(proxies.contains(ip("127.0.0.1")));
+        // Clones share the resolved addresses.
+        assert!(proxies.clone().contains(ip("127.0.0.1")));
+        assert_eq!(
+            resolve("127.0.0.1", &["203.0.113.5"], &proxies),
+            ip("203.0.113.5")
+        );
+    }
+
+    #[tokio::test]
+    async fn unresolvable_names_trust_nothing() {
+        let proxies = TrustedProxies::with_hosts(Vec::new(), vec!["scrn-test.invalid".to_owned()]);
+        assert!(proxies.refresh().await.is_empty());
+        assert!(!proxies.contains(ip("127.0.0.1")));
+        assert_eq!(
+            resolve("172.18.0.9", &["203.0.113.5"], &proxies),
+            ip("172.18.0.9")
+        );
     }
 }

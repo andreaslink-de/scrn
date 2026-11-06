@@ -5,10 +5,10 @@
 use std::net::SocketAddr;
 use std::path::PathBuf;
 
-use crate::net::{IpNet, TrustedProxies};
+use crate::net::{IpNet, TrustedProxies, is_host_name};
 
-const DEFAULT_BASE_URL: &str = "http://localhost:8080";
-const DEFAULT_BIND: &str = "0.0.0.0:8080";
+const DEFAULT_BASE_URL: &str = "http://localhost:8081";
+const DEFAULT_BIND: &str = "0.0.0.0:8081";
 const DEFAULT_DATA_DIR: &str = "/data";
 const DEFAULT_QUOTA_MB: i64 = 1024;
 const MIB: i64 = 1024 * 1024;
@@ -18,7 +18,7 @@ const MIB: i64 = 1024 * 1024;
 pub enum ConfigError {
     #[error("{name} must start with http:// or https:// and contain a host, got {value:?}")]
     InvalidBaseUrl { name: &'static str, value: String },
-    #[error("{name} must be a socket address such as 0.0.0.0:8080, got {value:?}")]
+    #[error("{name} must be a socket address such as 0.0.0.0:8081, got {value:?}")]
     InvalidBind { name: &'static str, value: String },
     #[error("{name} must not be empty")]
     Empty { name: &'static str },
@@ -26,7 +26,7 @@ pub enum ConfigError {
     InvalidBool { name: &'static str, value: String },
     #[error("{name} must be a whole number of megabytes (0 for unlimited), got {value:?}")]
     InvalidQuota { name: &'static str, value: String },
-    #[error("{name} contains an invalid IP address or CIDR range: {value:?}")]
+    #[error("{name} contains an invalid IP address, CIDR range or host name: {value:?}")]
     InvalidProxy { name: &'static str, value: String },
 }
 
@@ -161,19 +161,26 @@ fn parse_quota_mb(name: &'static str, value: &str) -> Result<i64, ConfigError> {
         })
 }
 
+/// IP addresses, CIDR ranges and host names, separated by commas.
 fn parse_proxies(name: &'static str, value: &str) -> Result<TrustedProxies, ConfigError> {
     let mut nets = Vec::new();
+    let mut hosts = Vec::new();
     for part in value.split(',').map(str::trim).filter(|p| !p.is_empty()) {
-        let net: IpNet = part.parse().map_err(|_| ConfigError::InvalidProxy {
-            name,
-            value: part.to_owned(),
-        })?;
-        nets.push(net);
+        if let Ok(net) = part.parse::<IpNet>() {
+            nets.push(net);
+        } else if is_host_name(part) {
+            hosts.push(part.to_ascii_lowercase());
+        } else {
+            return Err(ConfigError::InvalidProxy {
+                name,
+                value: part.to_owned(),
+            });
+        }
     }
-    if nets.is_empty() {
+    if nets.is_empty() && hosts.is_empty() {
         return Err(ConfigError::Empty { name });
     }
-    Ok(TrustedProxies::new(nets))
+    Ok(TrustedProxies::with_hosts(nets, hosts))
 }
 
 #[cfg(test)]
@@ -192,8 +199,8 @@ mod tests {
     #[test]
     fn defaults_apply_when_nothing_is_set() {
         let cfg = config(&[]).unwrap();
-        assert_eq!(cfg.base_url, "http://localhost:8080");
-        assert_eq!(cfg.bind, "0.0.0.0:8080".parse().unwrap());
+        assert_eq!(cfg.base_url, "http://localhost:8081");
+        assert_eq!(cfg.bind, "0.0.0.0:8081".parse().unwrap());
         assert_eq!(cfg.data_dir, PathBuf::from("/data"));
         assert!(cfg.cookie_secure);
         assert!(cfg.trusted_proxies.is_empty());
@@ -205,7 +212,7 @@ mod tests {
     #[test]
     fn empty_values_count_as_unset() {
         let cfg = config(&[("SCRN_BIND", "  "), ("SCRN_TRUSTED_PROXIES", "")]).unwrap();
-        assert_eq!(cfg.bind, "0.0.0.0:8080".parse().unwrap());
+        assert_eq!(cfg.bind, "0.0.0.0:8081".parse().unwrap());
         assert!(cfg.trusted_proxies.is_empty());
     }
 
@@ -278,6 +285,37 @@ mod tests {
                 matches!(
                     config(&[("SCRN_DEFAULT_QUOTA_MB", bad)]),
                     Err(ConfigError::InvalidQuota { .. })
+                ),
+                "{bad}"
+            );
+        }
+    }
+
+    #[test]
+    fn proxies_may_be_host_names() {
+        let cfg = config(&[(
+            "SCRN_TRUSTED_PROXIES",
+            "nginx-proxy-manager, 172.18.0.0/16, Proxy.Internal",
+        )])
+        .unwrap();
+        let proxies = &cfg.trusted_proxies;
+        assert_eq!(proxies.hosts(), ["nginx-proxy-manager", "proxy.internal"]);
+        assert_eq!(proxies.nets().len(), 1);
+        // Names trust nothing until they are resolved.
+        assert!(!proxies.contains("10.1.2.3".parse().unwrap()));
+        for bad in [
+            "10.0.0.256",
+            "a b",
+            "-npm",
+            "npm-",
+            "npm/16",
+            "1.2.3",
+            "näm",
+        ] {
+            assert!(
+                matches!(
+                    config(&[("SCRN_TRUSTED_PROXIES", bad)]),
+                    Err(ConfigError::InvalidProxy { .. })
                 ),
                 "{bad}"
             );

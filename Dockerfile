@@ -35,13 +35,13 @@ RUN groupadd --system --gid 10001 scrn \
 
 COPY --from=builder /usr/local/bin/scrn-server /usr/local/bin/scrn-server
 
-ENV SCRN_BIND=0.0.0.0:8080 \
+ENV SCRN_BIND=0.0.0.0:8081 \
     SCRN_DATA_DIR=/data \
     RUST_LOG=info
 
 USER scrn:scrn
 VOLUME ["/data"]
-EXPOSE 8080
+EXPOSE 8081
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD ["/usr/local/bin/scrn-server", "healthcheck"]

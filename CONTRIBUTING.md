@@ -17,7 +17,7 @@ You need a stable Rust toolchain and Docker.
 cargo fmt --all
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
-docker compose up --build    # run locally on http://127.0.0.1:8080
+docker compose up --build    # run locally on http://127.0.0.1:8081
 ```
 
 All three checks must pass; CI runs them on every pull request, together
