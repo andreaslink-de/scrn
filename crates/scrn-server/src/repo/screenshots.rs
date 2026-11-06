@@ -237,6 +237,26 @@ pub async fn set_public(
     Ok(result.rows_affected() == 1)
 }
 
+/// Changes the expiry of a public screenshot of `user_id`. Returns false if
+/// it does not exist, belongs to someone else or is private.
+pub async fn set_expiry(
+    db: impl SqliteExecutor<'_>,
+    id: Uuid,
+    user_id: i64,
+    expires_at: Option<i64>,
+) -> Result<bool, RepoError> {
+    let result = sqlx::query(
+        "UPDATE screenshots SET expires_at = ? \
+         WHERE id = ? AND user_id = ? AND visibility = 'public'",
+    )
+    .bind(expires_at)
+    .bind(id.to_string())
+    .bind(user_id)
+    .execute(db)
+    .await?;
+    Ok(result.rows_affected() == 1)
+}
+
 /// Makes a screenshot of `user_id` private. The short ID and the expiry are
 /// deleted, so the old link stops working. Returns false if it does not
 /// exist or belongs to someone else.
@@ -329,6 +349,37 @@ mod tests {
             short_id: short_id.to_owned(),
             expires_at,
         }
+    }
+
+    #[tokio::test]
+    async fn expiry_can_only_be_set_on_own_public_screenshots() {
+        let (_dir, pool) = test_util::pool().await;
+        let alice = test_util::user(&pool, "alice").await;
+        let bob = test_util::user(&pool, "bob").await;
+        let public = insert(&pool, &new(alice.id, Some(link("abcdefgh", None))), 100)
+            .await
+            .unwrap();
+        let private = insert(&pool, &new(alice.id, None), 100).await.unwrap();
+
+        assert!(
+            set_expiry(&pool, public.id, alice.id, Some(500))
+                .await
+                .unwrap()
+        );
+        let got = get_for_user(&pool, public.id, alice.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(got.public.unwrap().expires_at, Some(500));
+        assert!(set_expiry(&pool, public.id, alice.id, None).await.unwrap());
+
+        assert!(!set_expiry(&pool, public.id, bob.id, Some(1)).await.unwrap());
+        // A private screenshot cannot get an expiry (the CHECK forbids it).
+        assert!(
+            !set_expiry(&pool, private.id, alice.id, Some(1))
+                .await
+                .unwrap()
+        );
     }
 
     #[tokio::test]

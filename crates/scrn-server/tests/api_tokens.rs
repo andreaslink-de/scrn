@@ -71,8 +71,8 @@ async fn token_is_shown_once_and_authenticates_me() {
 
     // The list shows the name but never the token again.
     let page = browser.get("/app/settings").await;
-    assert!(page.body.contains("<td>Laptop</td>"));
-    assert!(page.body.contains("<td>nie</td>"));
+    assert!(page.body.contains(">Laptop</td>"));
+    assert!(page.body.contains(">nie</td>"));
     assert!(!page.body.contains(&token));
 
     let response = api_client(&server, &token).get("/api/v1/me").await;
@@ -160,7 +160,7 @@ async fn revoked_token_is_rejected() {
 
     assert_unauthorized(&api.get("/api/v1/me").await);
     let page = browser.get("/app/settings").await;
-    assert!(page.body.contains("<td>Widerrufen</td>"));
+    assert!(page.body.contains(">Widerrufen</td>"));
 }
 
 #[tokio::test]
@@ -208,7 +208,7 @@ async fn last_used_is_updated_throttled() {
     assert_eq!(last_used().await, Some(START + TOKEN_TOUCH_INTERVAL));
 
     let page = browser.get("/app/settings").await;
-    assert!(!page.body.contains("<td>nie</td>"));
+    assert!(!page.body.contains(">nie</td>"));
 }
 
 #[tokio::test]

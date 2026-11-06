@@ -14,7 +14,7 @@ use super::{ApiError, ApiUser};
 use crate::image::{self, ImageError, Processed};
 use crate::repo::screenshots::{self, NewScreenshot, PublicLink, Screenshot, Visibility};
 use crate::repo::{RepoError, users};
-use crate::{AppState, crypto, short_id, storage};
+use crate::{AppState, crypto, short_id, shots, storage};
 
 /// Largest accepted request body.
 pub const MAX_BODY_BYTES: usize = 20 * 1024 * 1024;
@@ -22,9 +22,6 @@ pub const MAX_BODY_BYTES: usize = 20 * 1024 * 1024;
 pub const MAX_EXPIRY_DAYS: i64 = 3650;
 pub const DEFAULT_LIST_LIMIT: i64 = 20;
 pub const MAX_LIST_LIMIT: i64 = 100;
-/// Attempts to find an unused short ID. With 62^8 possible IDs a single
-/// collision is already very unlikely.
-const SHORT_ID_ATTEMPTS: usize = 5;
 
 #[derive(Deserialize)]
 pub struct UploadParams {
@@ -159,7 +156,7 @@ async fn store(
     }
 
     let expires_at = expiry_days.filter(|d| *d > 0).map(|d| now + d * 86_400);
-    for _ in 0..SHORT_ID_ATTEMPTS {
+    for _ in 0..shots::SHORT_ID_ATTEMPTS {
         let public = match visibility {
             Visibility::Public => Some(PublicLink {
                 short_id: short_id::generate()?,
@@ -220,14 +217,9 @@ pub async fn delete(
     Path(id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
     let id = Uuid::parse_str(&id).map_err(|_| ApiError::NotFound)?;
-    if !screenshots::delete_for_user(&state.db, id, api_user.user.id).await? {
+    if !shots::delete(&state.db, &state.config.files_dir(), id, api_user.user.id).await? {
         return Err(ApiError::NotFound);
     }
-    // The row is gone, so the image is unreachable even if a file stays.
-    if let Err(err) = storage::remove(&state.config.files_dir(), id).await {
-        tracing::warn!(screenshot_id = %id, error = %err, "removing screenshot files failed");
-    }
-    tracing::info!(screenshot_id = %id, user_id = api_user.user.id, "screenshot deleted");
     Ok(StatusCode::NO_CONTENT)
 }
 

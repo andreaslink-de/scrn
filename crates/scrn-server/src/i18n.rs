@@ -182,8 +182,8 @@ mod tests {
         assert_eq!(i18n.t(Language::En, "login.title"), "Sign in");
         assert_eq!(i18n.t(Language::De, "no.such.key"), "no.such.key");
         assert_eq!(
-            i18n.tf(Language::En, "home.signed_in_as", &[("username", "alice")]),
-            "Signed in as alice."
+            i18n.tf(Language::En, "gallery.alt", &[("date", "today")]),
+            "Screenshot from today"
         );
     }
 

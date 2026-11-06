@@ -65,16 +65,16 @@
 <p>{{ page.t("tokens.none") }}</p>
 {% else %}
 <div class="table-wrap">
-<table>
+<table class="stack">
 <thead><tr><th scope="col">{{ page.t("tokens.col.name") }}</th><th scope="col">{{ page.t("admin.col.created") }}</th><th scope="col">{{ page.t("tokens.col.last_used") }}</th><th scope="col">{{ page.t("admin.col.status") }}</th><th scope="col">{{ page.t("admin.col.actions") }}</th></tr></thead>
 <tbody>
 {% for token in tokens %}
 <tr>
-<td>{{ token.name }}</td>
-<td>{{ page.time(token.created_at) }}</td>
-<td>{% match token.last_used_at %}{% when Some(at) %}{{ page.time(at) }}{% when None %}{{ page.t("tokens.never") }}{% endmatch %}</td>
-<td>{% if token.revoked_at.is_some() %}{{ page.t("status.revoked") }}{% else %}{{ page.t("status.active") }}{% endif %}</td>
-<td>{% if token.revoked_at.is_none() %}<form method="post" action="/app/tokens/{{ token.id }}/revoke"><input type="hidden" name="csrf" value="{{ csrf }}"><button type="submit" class="danger small">{{ page.t("tokens.revoke") }}</button></form>{% endif %}</td>
+<td data-label="{{ page.t("tokens.col.name") }}">{{ token.name }}</td>
+<td data-label="{{ page.t("admin.col.created") }}">{{ page.time(token.created_at) }}</td>
+<td data-label="{{ page.t("tokens.col.last_used") }}">{% match token.last_used_at %}{% when Some(at) %}{{ page.time(at) }}{% when None %}{{ page.t("tokens.never") }}{% endmatch %}</td>
+<td data-label="{{ page.t("admin.col.status") }}">{% if token.revoked_at.is_some() %}{{ page.t("status.revoked") }}{% else %}{{ page.t("status.active") }}{% endif %}</td>
+<td data-label="{{ page.t("admin.col.actions") }}">{% if token.revoked_at.is_none() %}<form method="post" action="/app/tokens/{{ token.id }}/revoke"><input type="hidden" name="csrf" value="{{ csrf }}"><button type="submit" class="danger small">{{ page.t("tokens.revoke") }}</button></form>{% endif %}</td>
 </tr>
 {% endfor %}
 </tbody>

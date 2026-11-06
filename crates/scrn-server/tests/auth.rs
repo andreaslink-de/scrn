@@ -174,7 +174,7 @@ async fn login_and_logout() {
 
     let page = browser.get("/app").await;
     assert_eq!(page.status, StatusCode::OK);
-    assert!(page.body.contains("Angemeldet als bob."));
+    assert!(page.body.contains(r#"<span class="muted">bob</span>"#));
     browser.get("/login").await.assert_redirect("/app");
 
     // Logout needs the session CSRF token.

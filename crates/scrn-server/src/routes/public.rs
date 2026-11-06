@@ -14,7 +14,7 @@ use axum::response::{IntoResponse, Response};
 use crate::auth::ClientIp;
 use crate::error::AppError;
 use crate::repo::screenshots;
-use crate::{AppState, crypto, short_id, storage};
+use crate::{AppState, short_id, shots, storage};
 
 /// Requests per client IP within [`PUBLIC_WINDOW`].
 pub const PUBLIC_REQUESTS_PER_IP: u32 = 300;
@@ -55,7 +55,7 @@ pub async fn show(
         return Err(AppError::NotFound);
     }
 
-    let etag = format!("\"{}\"", crypto::hex_encode(&shot.sha256));
+    let etag = shots::etag(&shot.sha256);
     let max_age = remaining.map_or(MAX_CACHE_SECONDS, |r| r.min(MAX_CACHE_SECONDS));
     let not_modified = headers
         .get(IF_NONE_MATCH)

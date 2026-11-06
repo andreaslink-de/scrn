@@ -2,7 +2,7 @@
 
 app.name = SCRN
 
-nav.home = Overview
+nav.home = Gallery
 nav.admin = Administration
 nav.logout = Sign out
 
@@ -24,8 +24,6 @@ invite.title = Register
 invite.intro = You have been invited to SCRN. Choose a username and a password.
 invite.submit = Create account
 
-home.title = Overview
-home.signed_in_as = Signed in as {username}.
 
 tokens.title = API tokens
 tokens.intro = The desktop client signs in with an API token. Create a separate token for each device so you can revoke them one by one.
@@ -95,7 +93,6 @@ lang.en = English
 theme.dark = Dark
 theme.light = Light
 prefs.apply = Apply
-home.gallery_soon = The gallery of your screenshots will appear here soon.
 settings.title = Settings
 settings.prefs = Appearance and language
 settings.language = Language
@@ -123,3 +120,43 @@ admin.quota.default = Default
 admin.quota.save = Set
 error.expiry_days = The custom duration must be between 1 and 3650 days.
 error.quota_invalid = The quota must be empty or a whole number of at least 0.
+
+# Gallery (S7b)
+gallery.title = Gallery
+gallery.filter = Filter
+gallery.all = All
+gallery.public = Public
+gallery.private = Private
+gallery.empty = No screenshots yet. Upload one with the desktop client.
+gallery.more = Load more
+gallery.alt = Screenshot from {date}
+shot.title = Screenshot
+shot.back = ← Back to the gallery
+shot.info = Details
+shot.dimensions = Dimensions
+shot.size = File size
+shot.created = Uploaded
+shot.visibility = Visibility
+shot.public = Public
+shot.private = Private
+shot.expired = Expired
+shot.expires = Link expires
+shot.short_url = Short link
+shot.make_public = Make public
+shot.make_public_hint = The image gets a new short link. It expires after your default expiry.
+shot.make_private = Make private
+shot.make_private_hint = The short link is deleted and stops working, even if you make the image public again later.
+shot.expiry = Link expiry
+shot.expiry_choice = Expires
+shot.expiry_date = Date (for “Specific date”)
+shot.expiry_date_hint = The link works until the end of this day (UTC).
+shot.delete = Delete
+shot.delete_open = Delete screenshot …
+shot.delete_confirm = The image, its thumbnail and the short link are deleted for good.
+shot.delete_final = Delete for good
+expiry.date = Specific date
+copy.button = Copy
+copy.done = Copied
+copy.manual = Selected, press Ctrl+C to copy
+error.expiry_date = The date must be in the future and at most 3650 days away.
+error.expiry_private = Only public screenshots have an expiry.

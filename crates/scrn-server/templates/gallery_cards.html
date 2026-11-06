@@ -1,0 +1,19 @@
+{% for card in cards %}
+<li class="shot-card">
+<a class="thumb-link" href="/app/shots/{{ card.id }}">
+<img src="/app/shots/{{ card.id }}/thumb" loading="lazy" decoding="async" width="{{ card.thumb_width }}" height="{{ card.thumb_height }}" alt="{{ page.tf("gallery.alt", "date", page.time(card.created_at).as_str()) }}">
+</a>
+<div class="shot-meta">
+{% if card.expired %}<span class="badge">{{ page.t("shot.expired") }}</span>
+{% else if card.public %}<span class="badge public">{{ page.t("shot.public") }}</span>
+{% else %}<span class="badge">{{ page.t("shot.private") }}</span>{% endif %}
+<time>{{ page.time(card.created_at) }}</time>
+</div>
+{% if let Some(url) = card.short_url %}{% let input_id = format!("url-{}", card.id) %}{% include "copy_link.html" %}{% endif %}
+</li>
+{% endfor %}
+{% if let Some(next) = next %}
+<li class="more-slot">
+<a class="button secondary" href="{{ next }}" hx-get="{{ next }}" hx-target="closest li" hx-swap="outerHTML">{{ page.t("gallery.more") }}</a>
+</li>
+{% endif %}

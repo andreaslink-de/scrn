@@ -1,6 +1,7 @@
 //! HTTP routes.
 
 mod admin;
+mod gallery;
 mod health;
 mod home;
 mod invite;
@@ -16,6 +17,7 @@ use axum::http::header::SET_COOKIE;
 use axum::response::Response;
 use axum::routing::{get, post};
 
+pub use gallery::PAGE_SIZE;
 pub use public::{MAX_CACHE_SECONDS, PUBLIC_REQUESTS_PER_IP, PUBLIC_WINDOW};
 
 use crate::AppState;
@@ -26,7 +28,13 @@ pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/healthz", get(health::healthz))
         .route("/", get(home::root))
-        .route("/app", get(home::app))
+        .route("/app", get(gallery::gallery))
+        .route("/app/shots/{id}", get(gallery::detail))
+        .route("/app/shots/{id}/image", get(gallery::image))
+        .route("/app/shots/{id}/thumb", get(gallery::thumb))
+        .route("/app/shots/{id}/visibility", post(gallery::set_visibility))
+        .route("/app/shots/{id}/expiry", post(gallery::set_expiry))
+        .route("/app/shots/{id}/delete", post(gallery::delete))
         .route("/app/settings", get(settings::show).post(settings::save))
         .route(
             "/app/tokens",
