@@ -1,11 +1,11 @@
-//! SCRN desktop client, C0 spike.
+//! SCRN desktop client.
 //!
-//! Checks whether Tauri carries the client on Linux with Wayland: a tray
-//! icon with a menu, `scrn capture` as command (a second start hands the
-//! command to the running instance), capture through the screenshot portal
-//! and a fullscreen overlay to select an area. The selection is saved as
-//! PNG under `~/Pictures/SCRN`. Everything the spike observes goes to the
-//! spike report (see [`report`]).
+//! A tray icon with a menu, `scrn capture` as command (a second start hands
+//! the command to the running instance), capture through the screenshot
+//! portal, a fullscreen overlay per monitor to select an area and an editor
+//! for arrows, highlights and blurred areas. The finished image is saved as
+//! PNG under `~/Pictures/SCRN`. Observations go to the client log (see
+//! [`report`]).
 
 mod capture;
 mod report;
@@ -27,17 +27,23 @@ const OVERLAY: &str = "overlay-";
 /// Time the tray menu needs to close before the screen is captured.
 const MENU_CLOSE_DELAY: std::time::Duration = std::time::Duration::from_millis(400);
 
+/// The editor window.
+const EDITOR: &str = "editor";
+
+/// Toolbar height and margins of the editor window in logical pixels.
+const EDITOR_CHROME: (f64, f64) = (32.0, 96.0);
+
 #[derive(Default)]
 struct AppState {
+    /// The full screen while the overlays are open.
     capture: Mutex<Option<Capture>>,
+    /// The selected area while the editor is open.
+    edit: Mutex<Option<Capture>>,
 }
 
-impl AppState {
-    fn lock(&self) -> std::sync::MutexGuard<'_, Option<Capture>> {
-        self.capture
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-    }
+fn lock(slot: &Mutex<Option<Capture>>) -> std::sync::MutexGuard<'_, Option<Capture>> {
+    slot.lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
 const USAGE: &str = "usage: scrn [capture]
@@ -77,6 +83,9 @@ fn main() {
             overlay_info,
             finish_selection,
             cancel_selection,
+            edit_image,
+            save_edit,
+            discard_edit,
             note
         ])
         .setup(move |app| {
@@ -154,7 +163,11 @@ fn log_monitors(app: &AppHandle) {
 /// Takes a screenshot and opens the overlay. `source` says what asked.
 fn start_capture(app: &AppHandle, source: &'static str) {
     report::note(format!("capture requested by {source}"));
-    if let Some(window) = overlays(app).into_iter().next() {
+    let busy = overlays(app)
+        .into_iter()
+        .next()
+        .or_else(|| app.get_webview_window(EDITOR));
+    if let Some(window) = busy {
         let _ = window.set_focus();
         return;
     }
@@ -175,7 +188,7 @@ fn start_capture(app: &AppHandle, source: &'static str) {
                     started.elapsed().as_millis(),
                     portal_path.display()
                 ));
-                *app.state::<AppState>().lock() = Some(shot);
+                *lock(&app.state::<AppState>().capture) = Some(shot);
                 if let Err(err) = open_overlays(&app) {
                     report::note(format!("opening the overlay failed: {err}"));
                     close_overlays(&app);
@@ -245,8 +258,7 @@ fn close_overlays(app: &AppHandle) {
 fn serve(app: &AppHandle, path: &str) -> Response<Vec<u8>> {
     let png = (path == "/capture.png")
         .then(|| {
-            app.state::<AppState>()
-                .lock()
+            lock(&app.state::<AppState>().capture)
                 .as_ref()
                 .map(|c| c.png.clone())
         })
@@ -301,8 +313,7 @@ fn overlay_info(
     window: WebviewWindow,
     state: tauri::State<'_, AppState>,
 ) -> Result<OverlayInfo, String> {
-    let (image_width, image_height) = state
-        .lock()
+    let (image_width, image_height) = lock(&state.capture)
         .as_ref()
         .map(|c| (c.width, c.height))
         .ok_or("no capture")?;
@@ -373,40 +384,115 @@ fn source_rect(monitors: &[MonitorInfo], index: usize, width: u32, height: u32) 
     }
 }
 
-/// Crops the selection, saves it and closes the overlay. Returns the path.
+/// Crops the selection, closes the overlays and opens the editor.
 #[tauri::command]
-fn finish_selection(
+async fn finish_selection(
     window: WebviewWindow,
     state: tauri::State<'_, AppState>,
     rect: Rect,
-) -> Result<String, String> {
+) -> Result<(), String> {
     let png = {
-        let guard = state.lock();
+        let guard = lock(&state.capture);
         let capture = guard.as_ref().ok_or("no capture")?;
         capture::crop(&capture.png, rect).map_err(|e| e.to_string())?
     };
-    let dir = capture::output_dir();
-    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    let secs = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| d.as_secs());
-    let path = dir.join(format!("scrn-spike-{secs}.png"));
-    std::fs::write(&path, &png).map_err(|e| e.to_string())?;
-    report::note(format!(
-        "selection {rect:?} saved to {} ({} bytes)",
-        path.display(),
-        png.len()
-    ));
-    *state.lock() = None;
-    close_overlays(window.app_handle());
-    Ok(path.display().to_string())
+    report::note(format!("selection {rect:?}"));
+    let monitor = window.current_monitor().ok().flatten();
+    *lock(&state.capture) = None;
+    *lock(&state.edit) = Some(Capture {
+        png,
+        width: rect.width,
+        height: rect.height,
+    });
+    let app = window.app_handle().clone();
+    close_overlays(&app);
+    if let Err(err) = open_editor(&app, monitor.as_ref(), rect) {
+        report::note(format!("opening the editor failed: {err}"));
+        *lock(&state.edit) = None;
+        return Err(err.to_string());
+    }
+    Ok(())
 }
 
 #[tauri::command]
 fn cancel_selection(window: WebviewWindow, state: tauri::State<'_, AppState>) {
     report::note("selection cancelled");
-    *state.lock() = None;
+    *lock(&state.capture) = None;
     close_overlays(window.app_handle());
+}
+
+/// Opens the editor, as large as the image but at most 90 % of the monitor.
+fn open_editor(
+    app: &AppHandle,
+    monitor: Option<&tauri::Monitor>,
+    rect: Rect,
+) -> tauri::Result<WebviewWindow> {
+    let (scale, screen) = monitor.map_or((1.0, (1280.0, 800.0)), |m| {
+        let scale = m.scale_factor();
+        let size = m.size().to_logical::<f64>(scale);
+        (scale, (size.width, size.height))
+    });
+    let (width, height) = editor_size(rect, scale, screen);
+    WebviewWindowBuilder::new(app, EDITOR, WebviewUrl::App("editor.html".into()))
+        .title("SCRN")
+        .inner_size(width, height)
+        .min_inner_size(560.0, 360.0)
+        .center()
+        .focused(true)
+        .build()
+}
+
+/// Logical window size for an image of `rect` physical pixels.
+fn editor_size(rect: Rect, scale: f64, screen: (f64, f64)) -> (f64, f64) {
+    let width = f64::from(rect.width) / scale + EDITOR_CHROME.0;
+    let height = f64::from(rect.height) / scale + EDITOR_CHROME.1;
+    (
+        width.clamp(560.0, (screen.0 * 0.9).max(560.0)).round(),
+        height.clamp(360.0, (screen.1 * 0.9).max(360.0)).round(),
+    )
+}
+
+/// The selected area as PNG for the editor.
+#[tauri::command]
+fn edit_image(state: tauri::State<'_, AppState>) -> Result<tauri::ipc::Response, String> {
+    lock(&state.edit)
+        .as_ref()
+        .map(|c| tauri::ipc::Response::new(c.png.clone()))
+        .ok_or_else(|| "nothing to edit".to_owned())
+}
+
+/// Takes the finished image from the editor (the raw PNG as request body),
+/// saves it and closes the editor. Returns the path.
+#[tauri::command]
+fn save_edit(
+    window: WebviewWindow,
+    state: tauri::State<'_, AppState>,
+    request: tauri::ipc::Request<'_>,
+) -> Result<String, String> {
+    let tauri::ipc::InvokeBody::Raw(png) = request.body() else {
+        return Err("expected the PNG as raw body".to_owned());
+    };
+    let (width, height) = lock(&state.edit)
+        .as_ref()
+        .map(|c| (c.width, c.height))
+        .ok_or("nothing to edit")?;
+    capture::check_edit(png, width, height).map_err(|e| e.to_string())?;
+    let path = capture::save(png).map_err(|e| e.to_string())?;
+    report::note(format!(
+        "edit saved to {} ({} bytes)",
+        path.display(),
+        png.len()
+    ));
+    *lock(&state.edit) = None;
+    let _ = window.close();
+    Ok(path.display().to_string())
+}
+
+#[tauri::command]
+fn discard_edit(window: WebviewWindow, state: tauri::State<'_, AppState>) {
+    report::note("edit discarded");
+    *lock(&state.edit) = None;
+    let _ = window.close();
 }
 
 /// Lets the overlay add its own observations to the report.
@@ -457,6 +543,35 @@ mod tests {
         assert_eq!(
             (right.x, right.y, right.width, right.height),
             (2000, 0, 2000, 1000)
+        );
+    }
+
+    #[test]
+    fn editor_fits_the_image_and_the_screen() {
+        let rect = |width, height| Rect {
+            x: 0,
+            y: 0,
+            width,
+            height,
+        };
+        // Room to spare: image plus toolbar and margins.
+        assert_eq!(
+            editor_size(rect(800, 400), 1.0, (1920.0, 1080.0)),
+            (832.0, 496.0)
+        );
+        // Physical pixels at scale 2 need half the logical size.
+        assert_eq!(
+            editor_size(rect(1600, 800), 2.0, (1920.0, 1080.0)),
+            (832.0, 496.0)
+        );
+        // Large images are capped at 90 % of the screen, tiny ones get the minimum.
+        assert_eq!(
+            editor_size(rect(5000, 3000), 1.0, (1920.0, 1080.0)),
+            (1728.0, 972.0)
+        );
+        assert_eq!(
+            editor_size(rect(20, 10), 1.0, (1920.0, 1080.0)),
+            (560.0, 360.0)
         );
     }
 

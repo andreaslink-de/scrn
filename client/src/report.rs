@@ -1,5 +1,5 @@
-//! The spike report: what the spike observed on this desktop, appended to
-//! `$XDG_STATE_HOME/scrn/spike.log` (default `~/.local/state/scrn`) and
+//! The client log: what the client observed on this desktop, appended to
+//! `$XDG_STATE_HOME/scrn/client.log` (default `~/.local/state/scrn`) and
 //! printed to stderr. It never contains image data.
 
 use std::io::Write;
@@ -12,7 +12,7 @@ pub fn path() -> Option<PathBuf> {
         .or_else(|| {
             std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".local/state"))
         })?;
-    Some(base.join("scrn").join("spike.log"))
+    Some(base.join("scrn").join("client.log"))
 }
 
 /// Writes one line to the report.

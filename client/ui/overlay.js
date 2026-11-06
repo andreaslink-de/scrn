@@ -2,7 +2,10 @@
 // rectangle. Coordinates are converted to image pixels before they are
 // sent to the app.
 
+import { t, translate } from "./i18n.js";
+
 const { invoke, convertFileSrc } = window.__TAURI__.core;
+translate();
 const canvas = document.getElementById("screen");
 const box = document.getElementById("selection");
 const size = document.getElementById("size");
@@ -63,7 +66,8 @@ const finish = async () => {
   try {
     await invoke("finish_selection", { rect });
   } catch (err) {
-    hint.textContent = `Fehler: ${err}`;
+    hint.hidden = false;
+    hint.textContent = t("editor.error", err);
   }
 };
 

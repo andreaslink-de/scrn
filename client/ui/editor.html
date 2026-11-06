@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>SCRN</title>
+<link rel="stylesheet" href="editor.css">
+<script type="module" src="editor.js"></script>
+</head>
+<body>
+<header class="toolbar">
+  <div class="group" role="toolbar" data-t-label="editor.tools">
+    <button type="button" class="tool" data-tool="arrow" aria-pressed="true" data-t-label="editor.arrow"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19 18 6M10 6h8v8"/></svg><span data-t="editor.arrow"></span><kbd>1</kbd></button>
+    <button type="button" class="tool" data-tool="mark" aria-pressed="false" data-t-label="editor.mark"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 15h16v4H4z" class="fill"/><path d="m9 13 7-9 3 2.5-7 9z"/></svg><span data-t="editor.mark"></span><kbd>2</kbd></button>
+    <button type="button" class="tool" data-tool="blur" aria-pressed="false" data-t-label="editor.blur"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h5v5H4zM15 4h5v5h-5zM9.5 9.5h5v5h-5zM4 15h5v5H4zM15 15h5v5h-5z" class="fill"/></svg><span data-t="editor.blur"></span><kbd>3</kbd></button>
+  </div>
+  <div class="group colors" role="radiogroup" data-t-label="editor.color"></div>
+  <div class="group">
+    <button type="button" id="undo" disabled data-t-label="editor.undo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg></button>
+  </div>
+  <p id="status" role="status"></p>
+  <div class="group end">
+    <button type="button" id="discard" class="secondary" data-t="editor.discard"></button>
+    <button type="button" id="save" class="primary" data-t="editor.save"></button>
+  </div>
+</header>
+<main id="stage"><canvas id="canvas"></canvas></main>
+</body>
+</html>

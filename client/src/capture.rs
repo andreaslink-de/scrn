@@ -20,6 +20,8 @@ pub enum CaptureError {
     Format(png::ColorType),
     #[error("the selection lies outside the image")]
     Selection,
+    #[error("the edited image is {0}x{1} px, expected {2}x{3} px")]
+    Size(u32, u32, u32, u32),
 }
 
 /// A captured screen: the PNG as the portal wrote it.
@@ -136,6 +138,33 @@ pub fn crop(data: &[u8], rect: Rect) -> Result<Vec<u8>, CaptureError> {
     Ok(out)
 }
 
+/// Checks that the editor returned a PNG of the size it was given. The
+/// editor runs in the webview, so its output is decoded before use.
+pub fn check_edit(data: &[u8], width: u32, height: u32) -> Result<(), CaptureError> {
+    let mut decoder = png::Decoder::new(std::io::Cursor::new(data));
+    decoder.set_transformations(png::Transformations::normalize_to_color8());
+    let mut reader = decoder.read_info()?;
+    let (w, h) = (reader.info().width, reader.info().height);
+    if (w, h) != (width, height) {
+        return Err(CaptureError::Size(w, h, width, height));
+    }
+    let mut buffer = vec![0; reader.output_buffer_size().ok_or(CaptureError::Selection)?];
+    reader.next_frame(&mut buffer)?;
+    Ok(())
+}
+
+/// Saves a finished image as `scrn-<unix millis>.png` in [`output_dir`].
+pub fn save(png: &[u8]) -> Result<PathBuf, CaptureError> {
+    let dir = output_dir();
+    std::fs::create_dir_all(&dir)?;
+    let millis = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis());
+    let path = dir.join(format!("scrn-{millis}.png"));
+    std::fs::write(&path, png)?;
+    Ok(path)
+}
+
 /// `~/Pictures/SCRN` (or `$XDG_PICTURES_DIR/SCRN` when set).
 pub fn output_dir() -> PathBuf {
     let pictures = std::env::var_os("XDG_PICTURES_DIR")
@@ -209,6 +238,22 @@ mod tests {
         let last = &buffer[frame.line_size + 3 * 3..frame.line_size + 4 * 3];
         assert_eq!(last, &[5, 4, 7]);
         assert_eq!(dimensions(&out).unwrap(), (4, 2));
+    }
+
+    #[test]
+    fn edits_must_keep_the_size() {
+        let edit = image(6, 4);
+        assert!(check_edit(&edit, 6, 4).is_ok());
+        assert!(matches!(
+            check_edit(&edit, 6, 5),
+            Err(CaptureError::Size(6, 4, 6, 5))
+        ));
+        assert!(matches!(
+            check_edit(b"not a png", 6, 4),
+            Err(CaptureError::Decode(_))
+        ));
+        // A truncated PNG has a valid header but no complete image data.
+        assert!(check_edit(&edit[..edit.len() - 20], 6, 4).is_err());
     }
 
     #[test]
