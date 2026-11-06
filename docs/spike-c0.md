@@ -70,6 +70,19 @@ tray menu. The flash comes from GNOME's portal backend with
 alternative is the ScreenCast portal (a single PipeWire frame), which is
 a decision for C1.
 
-### Round 2
+### Round 2 (2026-11-06)
 
-To be filled in.
+| # | Result |
+|---|--------|
+| 3 | ok: captures take about 0.6 s |
+| 7 | ok: overlay 0 on HG342PCB shows (0, 0, 3440×1440), overlay 1 on BenQ EW2420 shows (3440, 0, 1920×1080); a selection on the right monitor was saved at x=3897, Esc closes both overlays |
+| 2 | no tray click events arrive (AppIndicator); the menu is the only way in, which is enough |
+| 8, 9 | not tested yet: hand-over of `scrn capture`, fractional scaling |
+
+## Conclusion
+
+Tauri carries the client on GNOME with Wayland: tray menu, portal
+capture, sharp per-monitor overlays and exact crops all work. Open for
+C1: the GNOME flash (ScreenCast portal as an option), a selection across
+monitors, fractional scaling and the global shortcut through
+`scrn capture`.
