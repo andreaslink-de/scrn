@@ -122,6 +122,16 @@ impl Page {
         self.prefs.theme == crate::repo::users::Theme::Dark
     }
 
+    /// Version of the running server, e.g. `0.1.0`.
+    pub fn version(&self) -> &'static str {
+        env!("CARGO_PKG_VERSION")
+    }
+
+    /// The source repository, from `Cargo.toml`.
+    pub fn repository(&self) -> &'static str {
+        env!("CARGO_PKG_REPOSITORY")
+    }
+
     /// URL of an embedded asset, versioned by its content hash.
     pub fn asset(&self, name: &str) -> String {
         asset_url(name)

@@ -416,3 +416,15 @@ async fn static_assets_are_served_with_cache_headers() {
         StatusCode::NOT_FOUND
     );
 }
+
+#[tokio::test]
+async fn footer_shows_version_and_source_link() {
+    let server = TestServer::new().await;
+    let page = server.client("192.0.2.50").get("/login").await.body;
+    assert!(page.contains(&format!(
+        r#"<span class="version">v{}</span>"#,
+        env!("CARGO_PKG_VERSION")
+    )));
+    assert!(page.contains(r#"href="https://github.com/andreaslink-de/scrn""#));
+    assert!(page.contains(r#"aria-label="Quellcode auf GitHub""#));
+}

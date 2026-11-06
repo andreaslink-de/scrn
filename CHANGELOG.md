@@ -8,6 +8,7 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- The footer shows the server version and links to the source repository.
 - `SCRN_TRUSTED_PROXIES` accepts host names, such as the container name of
   Nginx Proxy Manager; they are resolved at startup and every 30 seconds.
 
