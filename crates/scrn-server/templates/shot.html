@@ -12,9 +12,9 @@
 <dl class="facts">
 <dt>{{ page.t("shot.dimensions") }}</dt><dd>{{ width }} × {{ height }} px</dd>
 <dt>{{ page.t("shot.size") }}</dt><dd>{{ page.bytes(bytes) }}</dd>
-<dt>{{ page.t("shot.created") }}</dt><dd>{{ page.time(created_at) }}</dd>
+<dt>{{ page.t("shot.created") }}</dt><dd><time datetime="{{ page.iso(created_at) }}">{{ page.time(created_at) }}</time></dd>
 <dt>{{ page.t("shot.visibility") }}</dt><dd>{% if expired %}{{ page.t("shot.expired") }}{% else if public %}{{ page.t("shot.public") }}{% else %}{{ page.t("shot.private") }}{% endif %}</dd>
-{% if public %}<dt>{{ page.t("shot.expires") }}</dt><dd>{% match expires_at %}{% when Some(at) %}{{ page.time(at) }}{% when None %}{{ page.t("expiry.never") }}{% endmatch %}</dd>{% endif %}
+{% if public %}<dt>{{ page.t("shot.expires") }}</dt><dd>{% match expires_at %}{% when Some(at) %}<time datetime="{{ page.iso(at) }}">{{ page.time(at) }}</time>{% when None %}{{ page.t("expiry.never") }}{% endmatch %}</dd>{% endif %}
 {% if short_url.is_some() %}<dt>{{ page.t("shot.views") }}</dt><dd>{{ views }}</dd>{% endif %}
 </dl>
 {% if let Some(url) = short_url %}{% let input_id = "short-url".to_owned() %}
@@ -56,7 +56,8 @@
 </div>
 <div class="field">
 <label for="custom_date">{{ page.t("shot.expiry_date") }}</label>
-<input id="custom_date" name="custom_date" type="date" class="short" min="{{ min_date }}" max="{{ max_date }}" value="{{ custom_date }}" aria-describedby="date-hint">
+<input id="custom_date" name="custom_date" type="date" class="short" min="{{ min_date }}" max="{{ max_date }}" value="{{ custom_date }}"{% if let Some(at) = expires_at %} data-expires-at="{{ at }}"{% endif %} aria-describedby="date-hint">
+<input type="hidden" name="custom_end" value="">
 <small id="date-hint" class="hint">{{ page.t("shot.expiry_date_hint") }}</small>
 </div>
 <button type="submit">{{ page.t("settings.save") }}</button>

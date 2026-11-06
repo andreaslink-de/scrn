@@ -191,3 +191,66 @@ document.addEventListener("click", async (event) => {
     showMessage(box, error.name === "NotAllowedError" ? box.dataset.cancelled : error.message);
   }
 });
+
+// --- Local time -------------------------------------------------------------
+//
+// The server renders times in UTC inside <time datetime="…Z">. They are
+// shown in the browser's time zone instead, in the same YYYY-MM-DD HH:MM
+// format; the zone name appears as a tooltip.
+
+const pad = (n) => String(n).padStart(2, "0");
+const localDate = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const localTime = (d) => `${localDate(d)} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+const zoneName = () => {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+  } catch (_) {
+    return "";
+  }
+};
+
+const localize = (root) => {
+  const zone = zoneName();
+  for (const el of root.querySelectorAll("time[datetime]")) {
+    const date = new Date(el.getAttribute("datetime"));
+    if (Number.isNaN(date.getTime())) {
+      continue;
+    }
+    el.textContent = localTime(date);
+    if (zone) {
+      el.title = zone;
+    }
+  }
+  // The expiry date field shows the local day the link ends on, and
+  // starts at the local today.
+  for (const input of root.querySelectorAll("input[name=custom_date]")) {
+    const end = Number(input.dataset.expiresAt);
+    if (input.dataset.expiresAt && Number.isFinite(end)) {
+      input.value = localDate(new Date((end - 1) * 1000));
+    }
+    if (input.min) {
+      input.min = localDate(new Date());
+    }
+  }
+};
+
+localize(document);
+// Cards loaded later ("show more") are localized as well.
+document.addEventListener("htmx:load", (event) => localize(event.detail.elt));
+
+// A chosen expiry date ends at local midnight, not midnight UTC.
+document.addEventListener("submit", (event) => {
+  const form = event.target;
+  const date = form.querySelector("input[name=custom_date]");
+  const end = form.querySelector("input[name=custom_end]");
+  if (!date || !end) {
+    return;
+  }
+  const parts = date.value.split("-").map(Number);
+  if (parts.length !== 3 || parts.some(Number.isNaN)) {
+    end.value = "";
+    return;
+  }
+  const [y, m, d] = parts;
+  end.value = String(new Date(y, m - 1, d + 1).getTime() / 1000);
+});

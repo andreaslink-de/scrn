@@ -430,3 +430,64 @@ async fn views_are_shown_for_public_links() {
     let detail = s.browser.get(&page).await.body;
     assert!(detail.contains("<dt>Aufrufe</dt><dd>0</dd>"));
 }
+
+#[tokio::test]
+async fn a_chosen_date_ends_at_local_midnight_of_the_browser() {
+    let mut s = setup().await;
+    let info = shot(&mut s.api, "?visibility=public").await;
+    let detail = format!("/app/shots/{}", info.id);
+    let action = format!("{detail}/expiry");
+    let date = html::format_date(START + 10 * DAY);
+    let utc_end = (START + 10 * DAY).div_euclid(DAY) * DAY + DAY;
+
+    // Europe/Berlin in winter (UTC+1) and America/Los_Angeles (UTC-8).
+    for local_end in [utc_end - 3600, utc_end + 8 * 3600] {
+        let end = local_end.to_string();
+        s.browser
+            .submit(
+                &detail,
+                &action,
+                &[
+                    ("expiry", "custom"),
+                    ("custom_date", &date),
+                    ("custom_end", &end),
+                ],
+            )
+            .await
+            .assert_redirect(&detail);
+        assert_eq!(expires(&s, &info.id).await, Some(local_end));
+    }
+
+    // Values no time zone can produce fall back to midnight UTC.
+    for bogus in ["0", "abc", &(utc_end + 15 * 3600).to_string()] {
+        s.browser
+            .submit(
+                &detail,
+                &action,
+                &[
+                    ("expiry", "custom"),
+                    ("custom_date", &date),
+                    ("custom_end", bogus),
+                ],
+            )
+            .await
+            .assert_redirect(&detail);
+        assert_eq!(expires(&s, &info.id).await, Some(utc_end), "{bogus}");
+    }
+}
+
+#[tokio::test]
+async fn times_carry_a_machine_readable_utc_value() {
+    let mut s = setup().await;
+    let info = shot(&mut s.api, "?visibility=public").await;
+    let iso = html::format_iso(START);
+    let expected = format!(
+        r#"<time datetime="{iso}">{}</time>"#,
+        html::format_time(START)
+    );
+    assert!(s.browser.get("/app").await.body.contains(&expected));
+    let detail = s.browser.get(&format!("/app/shots/{}", info.id)).await.body;
+    assert!(detail.contains(&expected));
+    let settings = s.browser.get("/app/settings").await.body;
+    assert!(settings.contains(r#"<time datetime=""#));
+}

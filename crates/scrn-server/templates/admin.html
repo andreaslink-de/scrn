@@ -63,8 +63,8 @@
 <tbody>
 {% for invite in invites %}
 <tr>
-<td data-label="{{ page.t("admin.col.created") }}">{{ page.time(invite.created_at) }}</td>
-<td data-label="{{ page.t("admin.col.expires") }}">{{ page.time(invite.expires_at) }}</td>
+<td data-label="{{ page.t("admin.col.created") }}"><time datetime="{{ page.iso(invite.created_at) }}">{{ page.time(invite.created_at) }}</time></td>
+<td data-label="{{ page.t("admin.col.expires") }}"><time datetime="{{ page.iso(invite.expires_at) }}">{{ page.time(invite.expires_at) }}</time></td>
 <td data-label="{{ page.t("admin.col.status") }}">{{ page.t(invite.status_key) }}{% if let Some(name) = invite.used_by %}: {{ name }}{% endif %}</td>
 <td data-label="{{ page.t("admin.col.actions") }}">{% if invite.open %}<form method="post" action="/admin/invites/{{ invite.id }}/delete"><input type="hidden" name="csrf" value="{{ csrf }}"><button type="submit" class="danger small">{{ page.t("admin.invite.revoke") }}</button></form>{% endif %}</td>
 </tr>

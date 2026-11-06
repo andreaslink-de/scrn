@@ -131,6 +131,12 @@ impl Page {
         format_time(ts.int())
     }
 
+    /// The `datetime` value of a `<time>` element; app.js uses it to show
+    /// the time in the browser's time zone.
+    pub fn iso(&self, ts: impl Int) -> String {
+        format_iso(ts.int())
+    }
+
     pub fn bytes(&self, n: impl Int) -> String {
         format_bytes(n.int(), self.prefs.lang)
     }
@@ -315,6 +321,18 @@ pub fn format_time(ts: i64) -> String {
     )
 }
 
+/// Formats a Unix timestamp as `YYYY-MM-DDTHH:MM:SSZ` (RFC 3339, UTC).
+pub fn format_iso(ts: i64) -> String {
+    let secs = ts.rem_euclid(86_400);
+    format!(
+        "{}T{:02}:{:02}:{:02}Z",
+        format_date(ts),
+        secs / 3600,
+        secs % 3600 / 60,
+        secs % 60
+    )
+}
+
 /// Formats the UTC date of a Unix timestamp as `YYYY-MM-DD`, the value
 /// format of `<input type="date">`.
 pub fn format_date(ts: i64) -> String {
@@ -409,6 +427,8 @@ mod tests {
         assert_eq!(format_time(951_782_400), "2000-02-29 00:00 UTC");
         assert_eq!(format_time(1_793_914_620), "2026-11-05 21:37 UTC");
         assert_eq!(format_time(-60), "1969-12-31 23:59 UTC");
+        assert_eq!(format_iso(1_793_914_621), "2026-11-05T21:37:01Z");
+        assert_eq!(format_iso(-1), "1969-12-31T23:59:59Z");
     }
 
     #[test]
