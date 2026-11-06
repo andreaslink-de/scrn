@@ -191,3 +191,4 @@ admin.backup.hint = Lädt ein tar-Archiv mit einer konsistenten Kopie der Datenb
 admin.backup.download = Backup herunterladen
 error.backup_running = Es läuft bereits ein Backup-Download. Bitte warte, bis er fertig ist.
 shot.views = Aufrufe
+footer.source = Quellcode auf GitHub

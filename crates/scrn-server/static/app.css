@@ -191,6 +191,32 @@ footer {
   gap: 0.75rem;
 }
 
+.footer-brand {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.version {
+  font-variant-numeric: tabular-nums;
+}
+
+.repo-link {
+  display: inline-flex;
+  align-items: center;
+  color: var(--muted);
+}
+
+.repo-link:hover,
+.repo-link:focus-visible {
+  color: var(--text);
+}
+
+.repo-link svg {
+  fill: currentColor;
+}
+
 /* Forms */
 
 .field {

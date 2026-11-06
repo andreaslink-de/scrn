@@ -191,3 +191,4 @@ admin.backup.hint = Downloads a tar archive with a consistent copy of the databa
 admin.backup.download = Download backup
 error.backup_running = A backup download is already running. Please wait until it has finished.
 shot.views = Views
+footer.source = Source code on GitHub
