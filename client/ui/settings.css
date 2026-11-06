@@ -1,0 +1,113 @@
+:root {
+  color-scheme: dark;
+  --bg: #111318;
+  --panel: #181b21;
+  --line: #2a2f38;
+  --text: #e6e9ef;
+  --muted: #9aa3b2;
+  --accent: #34e58c;
+  --accent-text: #0b1f16;
+  --ok: #7ddc9b;
+  --warn: #ffcf70;
+  --error: #ff8a80;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.45 system-ui, sans-serif;
+}
+
+main {
+  max-width: 34rem;
+  margin: 0 auto;
+  padding: 1.25rem 1.25rem 2rem;
+}
+
+h1 { font-size: 1.35rem; margin: 0 0 1rem; }
+h2 { font-size: 1rem; margin: 0 0 0.75rem; }
+
+section {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+label { display: block; font-weight: 600; margin: 0.75rem 0 0.3rem; }
+section > label:first-of-type { margin-top: 0; }
+
+fieldset { border: 0; margin: 0; padding: 0; }
+legend { font-weight: 600; margin-bottom: 0.3rem; padding: 0; }
+
+.choice {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 400;
+  margin: 0.35rem 0;
+}
+
+input[type="url"],
+input[type="password"],
+select {
+  width: 100%;
+  height: 2.25rem;
+  padding: 0 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}
+
+input[type="radio"],
+input[type="checkbox"] { accent-color: var(--accent); width: 1rem; height: 1rem; margin: 0; }
+
+input:focus-visible,
+select:focus-visible,
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.hint { color: var(--muted); margin: 0.35rem 0 0; font-size: 0.9em; }
+.warning { color: var(--warn); margin: 0.35rem 0 0; }
+.files { word-break: break-all; margin-top: 1rem; }
+
+.row { display: flex; gap: 0.5rem; margin-top: 0.75rem; }
+
+button {
+  height: 2.1rem;
+  padding: 0 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) { border-color: var(--muted); }
+button:disabled { opacity: 0.5; cursor: default; }
+
+.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+  font-weight: 600;
+}
+
+.result { margin: 0.5rem 0 0; min-height: 1.3em; }
+.result.ok { color: var(--ok); }
+.result.error { color: var(--error); }
+
+.actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 1rem;
+}
+
+.actions .result { margin: 0; margin-right: auto; }
