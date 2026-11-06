@@ -5,7 +5,7 @@
   --line: #2a2f38;
   --text: #e6e9ef;
   --muted: #9aa3b2;
-  --accent: #7aa2ff;
+  --accent: #34e58c;
 }
 
 * { box-sizing: border-box; }
@@ -61,7 +61,7 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 button:disabled { opacity: 0.4; cursor: default; }
 
 .tool[aria-pressed="true"] {
-  background: #243049;
+  background: #12301f;
   border-color: var(--accent);
 }
 
@@ -100,7 +100,7 @@ svg .fill { fill: currentColor; stroke: none; opacity: 0.6; }
 .primary {
   background: var(--accent);
   border-color: var(--accent);
-  color: #0b1020;
+  color: #0b1f16;
   font-weight: 600;
 }
 

@@ -514,11 +514,11 @@ fn discard_edit(window: WebviewWindow, state: tauri::State<'_, AppState>) {
     let _ = window.close();
 }
 
-/// Lets the overlay add its own observations to the report.
+/// Lets the overlay and the editor add their own observations to the log.
 #[tauri::command]
 fn note(line: String) {
     report::note(format!(
-        "overlay says: {}",
+        "webview says: {}",
         line.chars().take(500).collect::<String>()
     ));
 }
