@@ -2896,6 +2896,7 @@ name = "scrn-client"
 version = "0.0.0"
 dependencies = [
  "ashpd",
+ "gtk",
  "png",
  "serde",
  "serde_json",

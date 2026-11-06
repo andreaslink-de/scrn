@@ -12,6 +12,7 @@ mod report;
 
 use std::sync::Mutex;
 
+use gtk::prelude::GtkWindowExt;
 use serde::Serialize;
 use tauri::http::{Response, StatusCode, header::CONTENT_TYPE};
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
@@ -20,7 +21,11 @@ use tauri::{AppHandle, Manager, RunEvent, WebviewUrl, WebviewWindow, WebviewWind
 
 use capture::{Capture, Rect};
 
-const OVERLAY: &str = "overlay";
+/// Overlay windows are labelled `overlay-<monitor index>`, one per monitor.
+const OVERLAY: &str = "overlay-";
+
+/// Time the tray menu needs to close before the screen is captured.
+const MENU_CLOSE_DELAY: std::time::Duration = std::time::Duration::from_millis(400);
 
 #[derive(Default)]
 struct AppState {
@@ -149,12 +154,16 @@ fn log_monitors(app: &AppHandle) {
 /// Takes a screenshot and opens the overlay. `source` says what asked.
 fn start_capture(app: &AppHandle, source: &'static str) {
     report::note(format!("capture requested by {source}"));
-    if let Some(window) = app.get_webview_window(OVERLAY) {
+    if let Some(window) = overlays(app).into_iter().next() {
         let _ = window.set_focus();
         return;
     }
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
+        if source == "tray menu" {
+            // Otherwise the closing menu ends up in the screenshot.
+            tokio::time::sleep(MENU_CLOSE_DELAY).await;
+        }
         let started = std::time::Instant::now();
         match capture::take().await {
             Ok((shot, portal_path)) => {
@@ -167,8 +176,9 @@ fn start_capture(app: &AppHandle, source: &'static str) {
                     portal_path.display()
                 ));
                 *app.state::<AppState>().lock() = Some(shot);
-                if let Err(err) = open_overlay(&app) {
+                if let Err(err) = open_overlays(&app) {
                     report::note(format!("opening the overlay failed: {err}"));
+                    close_overlays(&app);
                 }
             }
             Err(err) => report::note(format!("capture failed: {err}")),
@@ -176,15 +186,59 @@ fn start_capture(app: &AppHandle, source: &'static str) {
     });
 }
 
-fn open_overlay(app: &AppHandle) -> tauri::Result<WebviewWindow> {
-    WebviewWindowBuilder::new(app, OVERLAY, WebviewUrl::App("overlay.html".into()))
+/// Opens one overlay per monitor. Wayland ignores window positions, so
+/// each window is put fullscreen on its monitor through GTK.
+fn open_overlays(app: &AppHandle) -> tauri::Result<()> {
+    let count = app.available_monitors()?.len().max(1);
+    for index in 0..count {
+        let window = WebviewWindowBuilder::new(
+            app,
+            format!("{OVERLAY}{index}"),
+            WebviewUrl::App("overlay.html".into()),
+        )
         .title("SCRN")
-        .fullscreen(true)
         .decorations(false)
         .always_on_top(true)
         .resizable(false)
-        .focused(true)
-        .build()
+        .visible(false)
+        .build()?;
+        let Ok(monitor) = i32::try_from(index) else {
+            continue;
+        };
+        app.run_on_main_thread(move || {
+            let gtk_window = match window.gtk_window() {
+                Ok(w) => w,
+                Err(err) => {
+                    report::note(format!("overlay {monitor}: no GTK window: {err}"));
+                    return;
+                }
+            };
+            let Some(screen) = gtk::gdk::Screen::default() else {
+                report::note("no GDK screen");
+                return;
+            };
+            gtk_window.fullscreen_on_monitor(&screen, monitor);
+            let _ = window.show();
+            if monitor == 0 {
+                let _ = window.set_focus();
+            }
+        })?;
+    }
+    Ok(())
+}
+
+fn overlays(app: &AppHandle) -> Vec<WebviewWindow> {
+    app.webview_windows()
+        .into_iter()
+        .filter(|(label, _)| label.starts_with(OVERLAY))
+        .map(|(_, window)| window)
+        .collect()
+}
+
+fn close_overlays(app: &AppHandle) {
+    for window in overlays(app) {
+        let _ = window.close();
+    }
 }
 
 /// Serves the current capture to the overlay as `scrn://localhost/capture.png`.
@@ -208,7 +262,7 @@ fn serve(app: &AppHandle, path: &str) -> Response<Vec<u8>> {
     response.unwrap_or_else(|_| Response::new(Vec::new()))
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 struct MonitorInfo {
     name: Option<String>,
     x: i32,
@@ -240,8 +294,8 @@ fn monitor_info(m: &tauri::Monitor) -> MonitorInfo {
 }
 
 /// Image size and the part of the image the overlay should show. The
-/// portal image covers the bounding box of all monitors; with a single
-/// monitor this is the whole image.
+/// portal image covers the bounding box of all monitors; each overlay
+/// shows the part of its own monitor, found by the index in its label.
 #[tauri::command]
 fn overlay_info(
     window: WebviewWindow,
@@ -258,50 +312,65 @@ fn overlay_info(
         .iter()
         .map(monitor_info)
         .collect();
-    let monitor = window
-        .current_monitor()
-        .map_err(|e| e.to_string())?
-        .map(|m| monitor_info(&m));
-    let source = match (&monitor, monitors.len()) {
-        (Some(m), n) if n > 1 => {
-            let left = monitors.iter().map(|m| m.x).min().unwrap_or(0);
-            let top = monitors.iter().map(|m| m.y).min().unwrap_or(0);
-            let right = monitors
-                .iter()
-                .map(|m| m.x + m.width as i32)
-                .max()
-                .unwrap_or(1);
-            let factor = f64::from(image_width) / f64::from((right - left).max(1));
-            let scale = |v: f64| (v * factor).round().max(0.0) as u32;
-            Rect {
-                x: scale(f64::from(m.x - left)),
-                y: scale(f64::from(m.y - top)),
-                width: scale(f64::from(m.width)).min(image_width),
-                height: scale(f64::from(m.height)).min(image_height),
-            }
-        }
-        _ => Rect {
-            x: 0,
-            y: 0,
-            width: image_width,
-            height: image_height,
-        },
-    };
+    let index = window
+        .label()
+        .strip_prefix(OVERLAY)
+        .and_then(|i| i.parse::<usize>().ok())
+        .unwrap_or(0);
+    let source = source_rect(&monitors, index, image_width, image_height);
     report::note(format!(
-        "overlay: window inner={:?} scale={:?} monitor={:?} source={source:?}",
+        "overlay {index}: window inner={:?} scale={:?} current monitor={:?} source={source:?}",
         window.inner_size().ok(),
         window.scale_factor().ok(),
-        monitor
-            .as_ref()
-            .map(|m| (&m.name, m.x, m.y, m.width, m.height, m.scale)),
+        window
+            .current_monitor()
+            .ok()
+            .flatten()
+            .map(|m| m.name().cloned()),
     ));
     Ok(OverlayInfo {
         image_width,
         image_height,
         source,
-        monitor,
+        monitor: monitors.get(index).cloned(),
         monitors,
     })
+}
+
+/// The part of the portal image that shows monitor `index`.
+fn source_rect(monitors: &[MonitorInfo], index: usize, width: u32, height: u32) -> Rect {
+    let whole = Rect {
+        x: 0,
+        y: 0,
+        width,
+        height,
+    };
+    let Some(m) = monitors.get(index).filter(|_| monitors.len() > 1) else {
+        return whole;
+    };
+    let left = monitors.iter().map(|m| m.x).min().unwrap_or(0);
+    let top = monitors.iter().map(|m| m.y).min().unwrap_or(0);
+    let right = monitors
+        .iter()
+        .map(|m| m.x + m.width as i32)
+        .max()
+        .unwrap_or(1);
+    let bottom = monitors
+        .iter()
+        .map(|m| m.y + m.height as i32)
+        .max()
+        .unwrap_or(1);
+    let fx = f64::from(width) / f64::from((right - left).max(1));
+    let fy = f64::from(height) / f64::from((bottom - top).max(1));
+    let scale = |v: i32, f: f64| (f64::from(v) * f).round().max(0.0) as u32;
+    let x = scale(m.x - left, fx).min(width.saturating_sub(1));
+    let y = scale(m.y - top, fy).min(height.saturating_sub(1));
+    Rect {
+        x,
+        y,
+        width: scale(m.width as i32, fx).clamp(1, width - x),
+        height: scale(m.height as i32, fy).clamp(1, height - y),
+    }
 }
 
 /// Crops the selection, saves it and closes the overlay. Returns the path.
@@ -329,7 +398,7 @@ fn finish_selection(
         png.len()
     ));
     *state.lock() = None;
-    let _ = window.close();
+    close_overlays(window.app_handle());
     Ok(path.display().to_string())
 }
 
@@ -337,7 +406,7 @@ fn finish_selection(
 fn cancel_selection(window: WebviewWindow, state: tauri::State<'_, AppState>) {
     report::note("selection cancelled");
     *state.lock() = None;
-    let _ = window.close();
+    close_overlays(window.app_handle());
 }
 
 /// Lets the overlay add its own observations to the report.
@@ -347,4 +416,56 @@ fn note(line: String) {
         "overlay says: {}",
         line.chars().take(500).collect::<String>()
     ));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn monitor(x: i32, y: i32, width: u32, height: u32) -> MonitorInfo {
+        MonitorInfo {
+            name: None,
+            x,
+            y,
+            width,
+            height,
+            scale: 1.0,
+        }
+    }
+
+    #[test]
+    fn source_rect_picks_each_monitor() {
+        // The setup from the C0 test: 3440x1440 left, 1920x1080 right.
+        let monitors = [monitor(0, 0, 3440, 1440), monitor(3440, 0, 1920, 1080)];
+        let left = source_rect(&monitors, 0, 5360, 1440);
+        assert_eq!(
+            (left.x, left.y, left.width, left.height),
+            (0, 0, 3440, 1440)
+        );
+        let right = source_rect(&monitors, 1, 5360, 1440);
+        assert_eq!(
+            (right.x, right.y, right.width, right.height),
+            (3440, 0, 1920, 1080)
+        );
+    }
+
+    #[test]
+    fn source_rect_scales_to_the_image() {
+        // An image at twice the logical size, e.g. with scale 2.
+        let monitors = [monitor(0, 0, 1000, 500), monitor(1000, 0, 1000, 500)];
+        let right = source_rect(&monitors, 1, 4000, 1000);
+        assert_eq!(
+            (right.x, right.y, right.width, right.height),
+            (2000, 0, 2000, 1000)
+        );
+    }
+
+    #[test]
+    fn source_rect_uses_the_whole_image_for_one_monitor() {
+        let monitors = [monitor(0, 0, 1920, 1080)];
+        let r = source_rect(&monitors, 0, 1920, 1080);
+        assert_eq!((r.x, r.y, r.width, r.height), (0, 0, 1920, 1080));
+        let r = source_rect(&[], 3, 800, 600);
+        assert_eq!((r.width, r.height), (800, 600));
+    }
 }
