@@ -168,8 +168,131 @@ All settings are environment variables, documented in
 | `RUST_LOG` | `info` | Log filter |
 | `SCRN_LOG_FORMAT` | `text` | `text` or `json` |
 
-Compose additionally reads `SCRN_PUBLISH_ADDR`, `SCRN_PUBLISH_PORT`,
-`SCRN_UID` and `SCRN_GID`.
+Compose additionally reads `SCRN_PUBLISH_ADDR` (default `127.0.0.1`),
+`SCRN_PUBLISH_PORT` (default `8080`), `SCRN_UID` and `SCRN_GID` (default
+`1000`, must own `./data`).
+
+## Deployment
+
+SCRN is meant to run behind a reverse proxy that terminates TLS. This
+section uses [Nginx Proxy Manager](https://nginxproxymanager.com/) (NPM);
+any other proxy works the same way.
+
+### Server
+
+1. Create `.env` next to `compose.yaml` (start from `.env.example`):
+
+   ```sh
+   SCRN_BASE_URL=https://scrn.example.org
+   SCRN_COOKIE_SECURE=true
+   SCRN_TRUSTED_PROXIES=172.18.0.0/16
+   SCRN_DEFAULT_QUOTA_MB=1024
+   ```
+
+   `SCRN_BASE_URL` is the public address: short links, invitation links and
+   passkeys are built from it. Passkeys are bound to its host name.
+
+2. `mkdir -p data && docker compose up -d --build`, then read the setup
+   token with `docker compose logs scrn | grep setup_token` and open
+   `<SCRN_BASE_URL>/setup`.
+
+The container runs as an unprivileged user with a read-only root file
+system, no capabilities and `no-new-privileges`. By default the port is only
+published on `127.0.0.1`.
+
+### Trusted proxies
+
+The server sees the proxy, not the visitor. It trusts `X-Forwarded-For`
+only from the addresses in `SCRN_TRUSTED_PROXIES`, so rate limits apply per
+visitor and nobody can fake an address by sending the header themselves.
+Set it to the address NPM connects from:
+
+- **NPM and SCRN in the same Docker network** (recommended): put both
+  containers into one network, for example by adding NPM's network to
+  `compose.yaml`:
+
+  ```yaml
+  services:
+    scrn:
+      networks: [npm]
+  networks:
+    npm:
+      external: true
+      name: npm_default   # see `docker network ls`
+  ```
+
+  Then use the network's subnet (`docker network inspect npm_default`, for
+  example `172.18.0.0/16`) as `SCRN_TRUSTED_PROXIES`, and forward NPM to the
+  host name `scrn`, port `8080`.
+- **NPM on the host or another machine**: publish the port where NPM can
+  reach it (`SCRN_PUBLISH_ADDR`) and use NPM's address, for example
+  `SCRN_TRUSTED_PROXIES=127.0.0.1` or the Docker bridge gateway
+  `172.17.0.1`.
+
+If the value is wrong, all visitors share the proxy's address for rate
+limiting; the server keeps working.
+
+### Nginx Proxy Manager
+
+Create a proxy host:
+
+- **Details**: domain `scrn.example.org`, scheme `http`, forward host `scrn`
+  (or the host address), forward port `8080`, *Block Common Exploits* on.
+  *Websockets Support* is not needed.
+- **SSL**: request a Let's Encrypt certificate, enable *Force SSL*,
+  *HTTP/2 Support* and *HSTS Enabled*.
+- **Advanced**: uploads are up to 20 MiB, so raise nginx' default limit of
+  1 MiB:
+
+  ```nginx
+  client_max_body_size 25m;
+  ```
+
+Check the result with `curl -I https://scrn.example.org/login`: the
+response must contain `strict-transport-security`,
+`content-security-policy`, `x-frame-options` and `permissions-policy`.
+
+### Limits
+
+| What | Limit |
+| --- | --- |
+| Login, setup and registration | 20 attempts per IP and 10 failed logins per username in 15 minutes |
+| Bad API tokens | 30 per IP in 15 minutes |
+| Uploads | 120 per user per hour, 20 MiB and 100 megapixels each, plus the storage quota |
+| Public short links | 300 requests per IP per minute |
+| Forms and JSON bodies | 64 KiB |
+| Request time | 30 seconds, 5 minutes for uploads |
+
+Rate limits are kept in memory and reset when the server restarts.
+
+### Backup and restore
+
+`scripts/backup.sh` creates one archive with a consistent copy of the
+database (taken while the server keeps running) and all screenshot files:
+
+```sh
+scripts/backup.sh /path/to/backups
+# backup written to /path/to/backups/scrn-20261106-120000.tar.gz
+```
+
+Run it from the directory with `compose.yaml`, for example daily from cron,
+and copy the archives off the machine.
+
+To restore, stop the server, replace the data directory with the archive's
+content and start again:
+
+```sh
+docker compose down
+mv data data.old                      # keep until the restore is verified
+mkdir data
+tar -xzf /path/to/backups/scrn-20261106-120000.tar.gz -C data
+sudo chown -R "${SCRN_UID:-1000}:${SCRN_GID:-1000}" data
+docker compose up -d
+```
+
+Sessions, API tokens, passkeys and short links are part of the database,
+so the gallery and all links work again as before. Files of uploads made
+after the backup was taken are removed by the maintenance job.
 
 ## License
 

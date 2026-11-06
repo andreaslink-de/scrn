@@ -8,7 +8,7 @@ mod screenshots;
 use axum::Json;
 use axum::Router;
 use axum::extract::{FromRequestParts, Request, State};
-use axum::http::header::{AUTHORIZATION, CACHE_CONTROL, WWW_AUTHENTICATE};
+use axum::http::header::{AUTHORIZATION, CACHE_CONTROL, RETRY_AFTER, WWW_AUTHENTICATE};
 use axum::http::request::Parts;
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::middleware::{self, Next};
@@ -16,7 +16,12 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get};
 use scrn_proto::ApiErrorBody;
 
+use std::net::IpAddr;
+
+use axum::RequestExt;
+
 use crate::AppState;
+use crate::auth::ClientIp;
 use crate::crypto;
 use crate::repo::users::{self, User};
 use crate::repo::{RepoError, api_tokens};
@@ -60,6 +65,8 @@ pub enum ApiError {
     ImageTooLarge,
     #[error("the body is not a valid PNG image")]
     InvalidImage,
+    #[error("too many requests, try again later")]
+    TooManyRequests { retry_after: i64 },
     #[error("the storage quota is exceeded")]
     QuotaExceeded { used: i64, limit: i64 },
     #[error("internal error: {0}")]
@@ -97,6 +104,7 @@ impl IntoResponse for ApiError {
             Self::ImageTooLarge => (StatusCode::PAYLOAD_TOO_LARGE, "image_too_large"),
             Self::InvalidImage => (StatusCode::UNPROCESSABLE_ENTITY, "invalid_image"),
             Self::QuotaExceeded { .. } => (StatusCode::PAYLOAD_TOO_LARGE, "quota_exceeded"),
+            Self::TooManyRequests { .. } => (StatusCode::TOO_MANY_REQUESTS, "too_many_requests"),
             Self::Internal(detail) => {
                 tracing::error!(error = %detail, "API request failed");
                 (StatusCode::INTERNAL_SERVER_ERROR, "internal")
@@ -112,6 +120,11 @@ impl IntoResponse for ApiError {
             body.quota_bytes = u64::try_from(limit).ok();
         }
         let mut response = (status, Json(body)).into_response();
+        if let Self::TooManyRequests { retry_after } = self
+            && let Ok(value) = HeaderValue::from_str(&retry_after.to_string())
+        {
+            response.headers_mut().insert(RETRY_AFTER, value);
+        }
         if status == StatusCode::UNAUTHORIZED {
             response
                 .headers_mut()
@@ -144,7 +157,8 @@ impl FromRequestParts<AppState> for ApiUser {
 /// Middleware: authenticates the bearer token and marks every API response
 /// as not cacheable.
 async fn require_token(State(state): State<AppState>, mut req: Request, next: Next) -> Response {
-    let mut response = match authenticate(&state, req.headers()).await {
+    let Ok(ClientIp(ip)) = req.extract_parts_with_state::<ClientIp, _>(&state).await;
+    let mut response = match check_token(&state, req.headers(), ip).await {
         Ok(api_user) => {
             req.extensions_mut().insert(api_user);
             next.run(req).await
@@ -155,6 +169,27 @@ async fn require_token(State(state): State<AppState>, mut req: Request, next: Ne
         .headers_mut()
         .insert(CACHE_CONTROL, HeaderValue::from_static("no-store"));
     response
+}
+
+/// Authenticates the request, rate limiting failures per client IP. Tokens
+/// cannot be guessed; the limit keeps floods of bad tokens off the database.
+async fn check_token(
+    state: &AppState,
+    headers: &HeaderMap,
+    ip: IpAddr,
+) -> Result<ApiUser, ApiError> {
+    let now = state.clock.now();
+    let key = ip.to_string();
+    if state.api_failure_limiter.is_limited(&key, now) {
+        return Err(ApiError::TooManyRequests {
+            retry_after: crate::API_FAILURE_WINDOW,
+        });
+    }
+    let result = authenticate(state, headers).await;
+    if matches!(result, Err(ApiError::Unauthorized)) {
+        state.api_failure_limiter.record(&key, now);
+    }
+    result
 }
 
 async fn authenticate(state: &AppState, headers: &HeaderMap) -> Result<ApiUser, ApiError> {

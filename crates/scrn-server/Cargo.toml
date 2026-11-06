@@ -12,6 +12,7 @@ publish.workspace = true
 argon2 = "0.6.0"
 askama = { version = "0.16.1", default-features = false, features = ["derive", "std"] }
 axum = { version = "0.8.9", default-features = false, features = ["http1", "tokio", "query", "json", "form"] }
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
 getrandom = "0.4.3"
 png = "0.18.1"
 scrn-proto = { path = "../scrn-proto" }
@@ -33,4 +34,5 @@ workspace = true
 http-body-util = "0.1.5"
 p256 = { version = "0.14", features = ["ecdsa"] }
 tempfile = "3.27.0"
+tokio = { version = "1.54.1", features = ["test-util"] }
 tower = { version = "0.5.3", default-features = false, features = ["util"] }

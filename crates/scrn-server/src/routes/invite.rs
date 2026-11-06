@@ -10,7 +10,7 @@ use serde::Deserialize;
 
 use super::with_cookie;
 use crate::AppState;
-use crate::auth::{self, MIN_PASSWORD_CHARS};
+use crate::auth::{self, ClientIp, MIN_PASSWORD_CHARS};
 use crate::crypto;
 use crate::error::AppError;
 use crate::html::{self, Page};
@@ -72,11 +72,21 @@ pub async fn show(
 pub async fn submit(
     State(state): State<AppState>,
     Path(token): Path<String>,
+    ClientIp(ip): ClientIp,
     prefs: Prefs,
     headers: HeaderMap,
     Form(form): Form<RegisterForm>,
 ) -> Result<Response, AppError> {
     auth::verify_form_csrf(&headers, &state, &form.csrf)?;
+    // Each attempt may cost an argon2 hash, so it shares the login budget.
+    let ip_key = ip.to_string();
+    let now = state.clock.now();
+    if state.login_ip_limiter.is_limited(&ip_key, now) {
+        return Err(AppError::TooManyRequests {
+            retry_after: crate::LOGIN_WINDOW,
+        });
+    }
+    state.login_ip_limiter.record(&ip_key, now);
     let Some(hash) = crypto::hash_hex_token(&token) else {
         return invalid_invite();
     };

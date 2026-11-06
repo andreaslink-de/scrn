@@ -1,7 +1,9 @@
 //! SCRN server binary.
 //!
 //! `scrn-server` runs the server, `scrn-server healthcheck` probes a running
-//! instance (used by the Docker `HEALTHCHECK`).
+//! instance (used by the Docker `HEALTHCHECK`) and `scrn-server backup
+//! <file>` writes a consistent copy of the database (used by
+//! `scripts/backup.sh`).
 
 use std::io::IsTerminal;
 use std::process::ExitCode;
@@ -15,12 +17,21 @@ async fn main() -> ExitCode {
     match args.first().map(String::as_str) {
         None => run_server().await,
         Some("healthcheck") => run_healthcheck().await,
+        Some("backup") => match args.get(1) {
+            Some(target) if args.len() == 2 => run_backup(target).await,
+            _ => {
+                eprintln!("usage: scrn-server backup <file>");
+                ExitCode::from(2)
+            }
+        },
         Some("--version" | "-V") => {
             println!("scrn-server {}", env!("CARGO_PKG_VERSION"));
             ExitCode::SUCCESS
         }
         Some(other) => {
-            eprintln!("unknown argument {other:?}; usage: scrn-server [healthcheck | --version]");
+            eprintln!(
+                "unknown argument {other:?}; usage: scrn-server [healthcheck | backup <file> | --version]"
+            );
             ExitCode::from(2)
         }
     }
@@ -54,6 +65,35 @@ async fn run_healthcheck() -> ExitCode {
     };
     match healthcheck::probe(healthcheck::probe_target(config.bind)).await {
         Ok(()) => ExitCode::SUCCESS,
+        Err(err) => {
+            eprintln!("{err}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+async fn run_backup(target: &str) -> ExitCode {
+    let config = match Config::from_env() {
+        Ok(config) => config,
+        Err(err) => {
+            eprintln!("invalid configuration: {err}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let pool = match scrn_server::db::connect(&config.database_path()).await {
+        Ok(pool) => pool,
+        Err(err) => {
+            eprintln!("{err}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let result = scrn_server::db::backup(&pool, std::path::Path::new(target)).await;
+    pool.close().await;
+    match result {
+        Ok(()) => {
+            println!("database backup written to {target}");
+            ExitCode::SUCCESS
+        }
         Err(err) => {
             eprintln!("{err}");
             ExitCode::FAILURE

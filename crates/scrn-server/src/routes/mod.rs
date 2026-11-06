@@ -21,8 +21,10 @@ use axum::routing::{get, post};
 pub use gallery::PAGE_SIZE;
 pub use public::{MAX_CACHE_SECONDS, PUBLIC_REQUESTS_PER_IP, PUBLIC_WINDOW};
 
-use crate::AppState;
+use axum::extract::DefaultBodyLimit;
+
 use crate::error::AppError;
+use crate::{AppState, hardening};
 
 /// Builds the router with all routes.
 pub fn router(state: AppState) -> Router {
@@ -71,6 +73,14 @@ pub fn router(state: AppState) -> Router {
         .nest(scrn_proto::API_PREFIX, crate::api::router(state.clone()))
         .fallback(not_found)
         .layer(axum::middleware::from_fn(crate::error::localize_errors))
+        .layer(DefaultBodyLimit::max(hardening::FORM_BODY_LIMIT))
+        .layer(axum::middleware::from_fn(hardening::timeout))
+        .layer(axum::middleware::from_fn(hardening::catch_panic))
+        // Outermost, so 408 and 500 responses get the headers too.
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            hardening::security_headers,
+        ))
         .with_state(state)
 }
 

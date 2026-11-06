@@ -2186,6 +2186,7 @@ dependencies = [
  "argon2 0.6.0",
  "askama",
  "axum",
+ "futures-util",
  "getrandom",
  "http-body-util",
  "p256",
