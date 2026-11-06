@@ -114,6 +114,14 @@ fn main() {
     });
 }
 
+/// The tray icon: macOS colors a black template itself. GNOME's top bar is
+/// dark in both themes, so Linux takes the green for dark backgrounds.
+/// Windows with a light taskbar follows in C2 (`tray-on-light`).
+#[cfg(target_os = "macos")]
+const TRAY_ICON: &[u8] = include_bytes!("../icons/tray/tray-template@2x.png");
+#[cfg(not(target_os = "macos"))]
+const TRAY_ICON: &[u8] = include_bytes!("../icons/tray/tray-on-dark@2x.png");
+
 fn build_tray(app: &AppHandle) -> tauri::Result<()> {
     let capture = MenuItem::with_id(app, "capture", "Screenshot aufnehmen", true, None::<&str>)?;
     let log = report::path().map_or_else(|| "-".to_owned(), |p| p.display().to_string());
@@ -121,9 +129,10 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
     let separator = PredefinedMenuItem::separator(app)?;
     let quit = MenuItem::with_id(app, "quit", "Beenden", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&capture, &info, &separator, &quit])?;
-    let icon = tauri::image::Image::from_bytes(include_bytes!("../icons/tray.png"))?;
+    let icon = tauri::image::Image::from_bytes(TRAY_ICON)?;
     TrayIconBuilder::with_id("main")
         .icon(icon)
+        .icon_as_template(cfg!(target_os = "macos"))
         .tooltip("SCRN")
         .menu(&menu)
         .show_menu_on_left_click(true)

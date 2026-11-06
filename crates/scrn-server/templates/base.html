@@ -6,7 +6,11 @@
 <meta name="color-scheme" content="{% if page.is_dark() %}dark{% else %}light{% endif %}">
 <meta name="htmx-config" content='{"includeIndicatorStyles":false,"allowEval":false,"allowScriptTags":false}'>
 <title>{{ page.t(page.title_key) }} · {{ page.t("app.name") }}</title>
+<link rel="icon" href="{{ page.asset("favicon.ico") }}" sizes="32x32">
 <link rel="icon" href="{{ page.asset("favicon.svg") }}" type="image/svg+xml">
+<link rel="apple-touch-icon" href="{{ page.asset("apple-touch-icon.png") }}">
+<link rel="manifest" href="{{ page.asset("manifest.webmanifest") }}">
+<meta name="theme-color" content="{% if page.is_dark() %}#181b22{% else %}#ffffff{% endif %}">
 <link rel="stylesheet" href="{{ page.asset("app.css") }}">
 <script src="{{ page.asset("htmx.min.js") }}" defer></script>
 <script src="{{ page.asset("app.js") }}" defer></script>
@@ -15,7 +19,7 @@
 <a class="skip-link" href="#main">{{ page.t("nav.skip") }}</a>
 <header class="topbar">
 <div class="topbar-inner">
-<a class="brand" href="/">{{ page.t("app.name") }}</a>
+<a class="brand" href="/"><img src="{% if page.is_dark() %}{{ page.asset("logo-dark.svg") }}{% else %}{{ page.asset("logo-light.svg") }}{% endif %}" width="28" height="28" alt="">{{ page.t("app.name") }}</a>
 {% if let Some(nav) = page.nav %}
 <nav class="nav" aria-label="{{ page.t("nav.label") }}">
 <a href="/app"{% if page.is_active("/app") %} aria-current="page"{% endif %}>{{ page.t("nav.home") }}</a>

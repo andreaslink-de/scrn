@@ -58,6 +58,7 @@ pub fn router(state: AppState) -> Router {
         .route("/app/passkeys/{id}/rename", post(passkeys::rename))
         .route("/app/passkeys/{id}/delete", post(passkeys::delete))
         .route("/static/{file}", get(crate::html::serve_static))
+        .route("/favicon.ico", get(crate::html::favicon))
         .route("/setup", get(setup::show).post(setup::submit))
         .route("/login", get(login::show).post(login::submit))
         .route("/logout", post(login::logout))

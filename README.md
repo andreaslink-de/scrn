@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/brand/svg/scrn-lockup-dark.svg">
+    <img src="assets/brand/svg/scrn-lockup-light.svg" alt="scrn.dev" width="320">
+  </picture>
+</p>
+
 # SCRN
 
 **Snap · Crop · Redact · Note**
