@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 
+use askama::Template;
 use axum::Form;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
@@ -12,10 +13,53 @@ use crate::AppState;
 use crate::auth::{AdminUser, CurrentUser};
 use crate::crypto::SecretToken;
 use crate::error::AppError;
-use crate::html::{self, Ctx, Nav, csrf_field, esc, format_time};
-use crate::repo::invites::{self, Invite};
-use crate::repo::sessions;
-use crate::repo::users::{self, Role, User};
+use crate::html::{self, Page, Usage};
+use crate::i18n;
+use crate::repo::invites;
+use crate::repo::users::{self, Role};
+use crate::repo::{screenshots, sessions};
+
+const MIB: i64 = 1024 * 1024;
+
+#[derive(Template)]
+#[template(path = "admin.html")]
+struct AdminPage {
+    page: Page,
+    csrf: String,
+    invite_link: Option<String>,
+    error: Option<String>,
+    default_days: i64,
+    default_quota: String,
+    users: Vec<UserRow>,
+    invites: Vec<InviteRow>,
+}
+
+struct UserRow {
+    id: i64,
+    username: String,
+    is_self: bool,
+    role_key: &'static str,
+    disabled: bool,
+    usage: Usage,
+    /// The quota field: empty for the server default, else MiB.
+    quota_mb: String,
+}
+
+struct InviteRow {
+    id: i64,
+    created_at: i64,
+    expires_at: i64,
+    status_key: &'static str,
+    used_by: Option<String>,
+    open: bool,
+}
+
+#[derive(Deserialize)]
+pub struct QuotaForm {
+    csrf: String,
+    #[serde(default)]
+    quota_mb: String,
+}
 
 /// Allowed invitation validity in days.
 const INVITE_DAYS: std::ops::RangeInclusive<i64> = 1..=30;
@@ -129,6 +173,45 @@ pub async fn disable_user(
     Ok(Redirect::to("/admin").into_response())
 }
 
+/// Sets a user's quota. Empty means the server default, 0 unlimited,
+/// otherwise MiB. Takes effect with the next upload; nothing is deleted.
+pub async fn set_quota(
+    State(state): State<AppState>,
+    AdminUser(admin): AdminUser,
+    Path(id): Path<i64>,
+    Form(form): Form<QuotaForm>,
+) -> Result<Response, AppError> {
+    admin.verify_csrf(&form.csrf)?;
+    let Some(quota) = parse_quota_mb(&form.quota_mb) else {
+        return render(
+            &state,
+            &admin,
+            Notice::Error("error.quota_invalid"),
+            StatusCode::UNPROCESSABLE_ENTITY,
+        )
+        .await;
+    };
+    if !users::set_quota(&state.db, id, quota).await? {
+        return Err(AppError::NotFound);
+    }
+    tracing::info!(user_id = id, by = admin.user.id, quota_bytes = ?quota, "quota changed");
+    Ok(Redirect::to("/admin").into_response())
+}
+
+/// `Some(None)` for the default, `Some(Some(bytes))` for a value, `None`
+/// for invalid input.
+fn parse_quota_mb(raw: &str) -> Option<Option<i64>> {
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return Some(None);
+    }
+    raw.parse::<i64>()
+        .ok()
+        .filter(|mb| *mb >= 0)
+        .and_then(|mb| mb.checked_mul(MIB))
+        .map(Some)
+}
+
 pub async fn enable_user(
     State(state): State<AppState>,
     AdminUser(admin): AdminUser,
@@ -149,152 +232,98 @@ async fn render(
     notice: Notice,
     status: StatusCode,
 ) -> Result<Response, AppError> {
-    let ctx = Ctx::new(admin.user.language);
+    let lang = admin.user.language;
     let all_users = users::list(&state.db).await?;
     let all_invites = invites::list(&state.db).await?;
+    let usage = screenshots::usage_by_user(&state.db).await?;
     let now = state.clock.now();
+    let default_quota_bytes = state.config.default_quota_bytes;
 
-    let notice = match notice {
-        Notice::None => String::new(),
-        Notice::InviteLink(link) => format!(
-            r#"<p role="status">{}<br><input type="text" readonly value="{}" size="80" aria-label="{}"></p>"#,
-            ctx.t("admin.invite.created"),
-            esc(&link),
-            ctx.t("admin.invites"),
-        ),
-        Notice::Error(key) => html::alert(Some(&ctx.t(key))),
-    };
-
-    let body = format!(
-        r#"{notice}
-<h2>{users_title}</h2>
-{users}
-<h2>{invites_title}</h2>
-<form method="post" action="/admin/invites">
-{csrf}
-<p><label for="days">{days_label}</label><br><input id="days" name="days" type="number" min="1" max="30" value="{default_days}" required></p>
-<p><button type="submit">{create}</button></p>
-</form>
-{invites}"#,
-        users_title = ctx.t("admin.users"),
-        users = users_table(&ctx, admin, &all_users),
-        invites_title = ctx.t("admin.invites"),
-        csrf = csrf_field(&admin.csrf),
-        days_label = ctx.t("admin.invite.days"),
-        default_days = DEFAULT_INVITE_DAYS,
-        create = ctx.t("admin.invite.create"),
-        invites = invites_table(&ctx, admin, &all_invites, &all_users, now),
-    );
-    let nav = Nav {
-        is_admin: true,
-        csrf: &admin.csrf,
-    };
-    Ok(html::response(
-        status,
-        html::page(&ctx, "admin.title", Some(&nav), &body),
-    ))
-}
-
-fn users_table(ctx: &Ctx<'_>, admin: &CurrentUser, users: &[User]) -> String {
-    let rows: String = users
+    let names: HashMap<i64, &str> = all_users
         .iter()
-        .map(|user| {
-            let you = if user.id == admin.user.id {
-                format!(" {}", ctx.t("admin.you"))
-            } else {
-                String::new()
-            };
-            let role = ctx.t(match user.role {
-                Role::Admin => "role.admin",
-                Role::User => "role.user",
-            });
-            let status = ctx.t(if user.is_disabled() {
-                "status.disabled"
-            } else {
-                "status.active"
-            });
-            let action = if user.id == admin.user.id {
-                String::new()
-            } else {
-                let (path, label) = if user.is_disabled() {
-                    ("enable", "admin.enable")
-                } else {
-                    ("disable", "admin.disable")
-                };
-                format!(
-                    r#"<form method="post" action="/admin/users/{id}/{path}">{csrf}<button type="submit">{label}</button></form>"#,
-                    id = user.id,
-                    csrf = csrf_field(&admin.csrf),
-                    label = ctx.t(label),
-                )
-            };
-            format!(
-                "<tr><td>{name}{you}</td><td>{role}</td><td>{status}</td><td>{created}</td><td>{action}</td></tr>\n",
-                name = esc(&user.username),
-                created = format_time(user.created_at),
-            )
-        })
+        .map(|u| (u.id, u.username.as_str()))
         .collect();
-    format!(
-        "<table>\n<thead><tr><th>{}</th><th>{}</th><th>{}</th><th>{}</th><th>{}</th></tr></thead>\n<tbody>\n{rows}</tbody>\n</table>",
-        ctx.t("admin.col.username"),
-        ctx.t("admin.col.role"),
-        ctx.t("admin.col.status"),
-        ctx.t("admin.col.created"),
-        ctx.t("admin.col.actions"),
-    )
-}
-
-fn invites_table(
-    ctx: &Ctx<'_>,
-    admin: &CurrentUser,
-    invites: &[Invite],
-    users: &[User],
-    now: i64,
-) -> String {
-    if invites.is_empty() {
-        return format!("<p>{}</p>", ctx.t("admin.invite.none"));
-    }
-    let names: HashMap<i64, &str> = users.iter().map(|u| (u.id, u.username.as_str())).collect();
-    let rows: String = invites
+    let invites = all_invites
         .iter()
         .map(|invite| {
-            let (status, action) = match invite.used_by {
-                Some(user_id) => (
-                    format!(
-                        "{}: {}",
-                        ctx.t("invite.status.used"),
-                        esc(names.get(&user_id).copied().unwrap_or("?"))
-                    ),
-                    String::new(),
-                ),
-                None => {
-                    let status = ctx.t(if invite.is_usable(now) {
-                        "invite.status.open"
-                    } else {
-                        "invite.status.expired"
-                    });
-                    let action = format!(
-                        r#"<form method="post" action="/admin/invites/{id}/delete">{csrf}<button type="submit">{label}</button></form>"#,
-                        id = invite.id,
-                        csrf = csrf_field(&admin.csrf),
-                        label = ctx.t("admin.invite.revoke"),
-                    );
-                    (status, action)
-                }
+            let used_by = invite
+                .used_by
+                .map(|id| names.get(&id).copied().unwrap_or("?").to_owned());
+            let status_key = if used_by.is_some() {
+                "invite.status.used"
+            } else if invite.is_usable(now) {
+                "invite.status.open"
+            } else {
+                "invite.status.expired"
             };
-            format!(
-                "<tr><td>{created}</td><td>{expires}</td><td>{status}</td><td>{action}</td></tr>\n",
-                created = format_time(invite.created_at),
-                expires = format_time(invite.expires_at),
-            )
+            InviteRow {
+                id: invite.id,
+                created_at: invite.created_at,
+                expires_at: invite.expires_at,
+                status_key,
+                open: used_by.is_none(),
+                used_by,
+            }
         })
         .collect();
-    format!(
-        "<table>\n<thead><tr><th>{}</th><th>{}</th><th>{}</th><th>{}</th></tr></thead>\n<tbody>\n{rows}</tbody>\n</table>",
-        ctx.t("admin.col.created"),
-        ctx.t("admin.col.expires"),
-        ctx.t("admin.col.status"),
-        ctx.t("admin.col.actions"),
+    let users = all_users
+        .iter()
+        .map(|user| UserRow {
+            id: user.id,
+            username: user.username.clone(),
+            is_self: user.id == admin.user.id,
+            role_key: match user.role {
+                Role::Admin => "role.admin",
+                Role::User => "role.user",
+            },
+            disabled: user.is_disabled(),
+            usage: Usage::new(
+                usage.get(&user.id).copied().unwrap_or(0),
+                user.effective_quota(default_quota_bytes),
+            ),
+            quota_mb: user
+                .quota_bytes
+                .map_or_else(String::new, |q| (q / MIB).to_string()),
+        })
+        .collect();
+
+    let (invite_link, error) = match notice {
+        Notice::None => (None, None),
+        Notice::InviteLink(link) => (Some(link), None),
+        Notice::Error(key) => (None, Some(i18n::catalogs().t(lang, key).to_owned())),
+    };
+    let default_quota = if default_quota_bytes == 0 {
+        i18n::catalogs().t(lang, "storage.unlimited").to_owned()
+    } else {
+        html::format_bytes(default_quota_bytes, lang)
+    };
+    html::render(
+        status,
+        &AdminPage {
+            page: Page::user(admin, "admin.title", "/admin"),
+            csrf: admin.csrf.clone(),
+            invite_link,
+            error,
+            default_days: DEFAULT_INVITE_DAYS,
+            default_quota,
+            users,
+            invites,
+        },
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn quota_input() {
+        assert_eq!(parse_quota_mb(""), Some(None));
+        assert_eq!(parse_quota_mb("  "), Some(None));
+        assert_eq!(parse_quota_mb("0"), Some(Some(0)));
+        assert_eq!(parse_quota_mb(" 5 "), Some(Some(5 * MIB)));
+        for bad in ["-1", "1.5", "x", "9223372036854775807"] {
+            assert_eq!(parse_quota_mb(bad), None, "{bad}");
+        }
+    }
 }

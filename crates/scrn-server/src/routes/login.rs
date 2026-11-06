@@ -4,6 +4,7 @@
 //! or the account disabled, produces exactly the same response, and an
 //! argon2 verification runs in every case so the timing is similar too.
 
+use askama::Template;
 use axum::Form;
 use axum::extract::State;
 use axum::http::header::SET_COOKIE;
@@ -15,9 +16,18 @@ use super::with_cookie;
 use crate::AppState;
 use crate::auth::{self, ClientIp, CurrentUser, MAX_PASSWORD_CHARS, MAX_USERNAME_CHARS};
 use crate::error::AppError;
-use crate::html::{self, Ctx, Field, csrf_field};
-use crate::i18n::DEFAULT_LANGUAGE;
+use crate::html::{self, Page};
+use crate::i18n;
+use crate::prefs::Prefs;
 use crate::repo::{sessions, users};
+
+#[derive(Template)]
+#[template(path = "login.html")]
+struct LoginPage {
+    page: Page,
+    csrf: String,
+    error: Option<String>,
+}
 
 #[derive(Deserialize)]
 pub struct LoginForm {
@@ -33,6 +43,7 @@ pub struct CsrfForm {
 
 pub async fn show(
     State(state): State<AppState>,
+    prefs: Prefs,
     headers: HeaderMap,
     user: Option<CurrentUser>,
 ) -> Result<Response, AppError> {
@@ -40,9 +51,8 @@ pub async fn show(
         return Ok(Redirect::to("/app").into_response());
     }
     let (csrf, cookie) = auth::form_csrf(&headers, &state)?;
-    let ctx = Ctx::new(DEFAULT_LANGUAGE);
     Ok(with_cookie(
-        render(&ctx, &csrf, None, StatusCode::OK),
+        render(prefs, csrf, None, StatusCode::OK)?,
         cookie,
     ))
 }
@@ -50,11 +60,12 @@ pub async fn show(
 pub async fn submit(
     State(state): State<AppState>,
     ClientIp(ip): ClientIp,
+    prefs: Prefs,
     headers: HeaderMap,
     Form(form): Form<LoginForm>,
 ) -> Result<Response, AppError> {
     auth::verify_form_csrf(&headers, &state, &form.csrf)?;
-    let ctx = Ctx::new(DEFAULT_LANGUAGE);
+    let message = |key| Some(i18n::catalogs().t(prefs.lang, key).to_owned());
     let now = state.clock.now();
     let ip_key = ip.to_string();
     let username = form.username.trim();
@@ -63,13 +74,12 @@ pub async fn submit(
     if state.login_ip_limiter.is_limited(&ip_key, now)
         || state.login_user_limiter.is_limited(&user_key, now)
     {
-        let message = ctx.t("error.too_many_attempts");
-        return Ok(render(
-            &ctx,
-            &form.csrf,
-            Some(&message),
+        return render(
+            prefs,
+            form.csrf,
+            message("error.too_many_attempts"),
             StatusCode::TOO_MANY_REQUESTS,
-        ));
+        );
     }
     state.login_ip_limiter.record(&ip_key, now);
 
@@ -89,13 +99,12 @@ pub async fn submit(
         Some(user) if password_ok && user.password_hash.is_some() && !user.is_disabled() => user,
         _ => {
             state.login_user_limiter.record(&user_key, now);
-            let message = ctx.t("error.login_failed");
-            return Ok(render(
-                &ctx,
-                &form.csrf,
-                Some(&message),
+            return render(
+                prefs,
+                form.csrf,
+                message("error.login_failed"),
                 StatusCode::UNAUTHORIZED,
-            ));
+            );
         }
     };
 
@@ -103,7 +112,12 @@ pub async fn submit(
     sessions::delete_expired(&state.db, now).await?;
     let cookie = auth::start_session(&state, user.id).await?;
     tracing::info!(user_id = user.id, "user logged in");
-    Ok(([(SET_COOKIE, cookie)], Redirect::to("/app")).into_response())
+    let mut response = ([(SET_COOKIE, cookie)], Redirect::to("/app")).into_response();
+    // Remember the user's language and theme for logged-out pages too.
+    for cookie in Prefs::of_user(&user).cookies(state.config.cookie_secure) {
+        response.headers_mut().append(SET_COOKIE, cookie);
+    }
+    Ok(response)
 }
 
 pub async fn logout(
@@ -117,40 +131,14 @@ pub async fn logout(
     Ok(([(SET_COOKIE, cookie)], Redirect::to("/login")).into_response())
 }
 
-fn render(ctx: &Ctx<'_>, csrf: &str, error: Option<&str>, status: StatusCode) -> Response {
+fn render(
+    prefs: Prefs,
+    csrf: String,
+    error: Option<String>,
+    status: StatusCode,
+) -> Result<Response, AppError> {
     // The username is deliberately not echoed back, so the page is the
     // same for every failed attempt.
-    let fields = [
-        Field {
-            name: "username",
-            label: ctx.t("field.username"),
-            kind: "text",
-            value: "",
-            autocomplete: "username",
-            hint: None,
-            extra: r#" autofocus"#,
-        },
-        Field {
-            name: "password",
-            label: ctx.t("field.password"),
-            kind: "password",
-            value: "",
-            autocomplete: "current-password",
-            hint: None,
-            extra: "",
-        },
-    ];
-    let fields: String = fields.iter().map(Field::render).collect();
-    let body = format!(
-        r#"{alert}
-<form method="post" action="/login">
-{csrf}
-{fields}
-<p><button type="submit">{submit}</button></p>
-</form>"#,
-        alert = html::alert(error),
-        csrf = csrf_field(csrf),
-        submit = ctx.t("login.submit"),
-    );
-    html::response(status, html::page(ctx, "login.title", None, &body))
+    let page = Page::public(prefs, "login.title", Some(csrf.clone()), "/login");
+    html::render(status, &LoginPage { page, csrf, error })
 }

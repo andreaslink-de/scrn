@@ -29,7 +29,7 @@ async fn logged_in(server: &TestServer, name: &str, role: Role) -> (User, Client
 
 async fn create_token(browser: &mut Client, name: &str) -> String {
     let response = browser
-        .submit("/app/tokens", "/app/tokens", &[("name", name)])
+        .submit("/app/settings", "/app/tokens", &[("name", name)])
         .await;
     assert_eq!(response.status, StatusCode::OK, "{}", response.body);
     shown_token(&response.body)
@@ -61,7 +61,7 @@ async fn token_is_shown_once_and_authenticates_me() {
     let server = TestServer::new().await;
     let (_, mut browser) = logged_in(&server, "alice", Role::User).await;
 
-    let page = browser.get("/app/tokens").await;
+    let page = browser.get("/app/settings").await;
     assert_eq!(page.status, StatusCode::OK);
     assert!(page.body.contains("Noch keine Tokens"));
 
@@ -70,7 +70,7 @@ async fn token_is_shown_once_and_authenticates_me() {
     assert_eq!(token.len(), 48);
 
     // The list shows the name but never the token again.
-    let page = browser.get("/app/tokens").await;
+    let page = browser.get("/app/settings").await;
     assert!(page.body.contains("<td>Laptop</td>"));
     assert!(page.body.contains("<td>nie</td>"));
     assert!(!page.body.contains(&token));
@@ -154,12 +154,12 @@ async fn revoked_token_is_rejected() {
         .unwrap()[0]
         .id;
     browser
-        .submit("/app/tokens", &format!("/app/tokens/{id}/revoke"), &[])
+        .submit("/app/settings", &format!("/app/tokens/{id}/revoke"), &[])
         .await
-        .assert_redirect("/app/tokens");
+        .assert_redirect("/app/settings#tokens");
 
     assert_unauthorized(&api.get("/api/v1/me").await);
-    let page = browser.get("/app/tokens").await;
+    let page = browser.get("/app/settings").await;
     assert!(page.body.contains("<td>Widerrufen</td>"));
 }
 
@@ -207,7 +207,7 @@ async fn last_used_is_updated_throttled() {
     api.get("/api/v1/me").await;
     assert_eq!(last_used().await, Some(START + TOKEN_TOUCH_INTERVAL));
 
-    let page = browser.get("/app/tokens").await;
+    let page = browser.get("/app/settings").await;
     assert!(!page.body.contains("<td>nie</td>"));
 }
 
@@ -236,16 +236,22 @@ async fn users_cannot_revoke_tokens_of_others() {
         .unwrap()[0]
         .id;
     bob_browser
-        .submit("/app/tokens", &format!("/app/tokens/{id}/revoke"), &[])
+        .submit("/app/settings", &format!("/app/tokens/{id}/revoke"), &[])
         .await
-        .assert_redirect("/app/tokens");
+        .assert_redirect("/app/settings#tokens");
 
     assert_eq!(
         api_client(&server, &token).get("/api/v1/me").await.status,
         StatusCode::OK
     );
     // Bob does not see Alice's tokens either.
-    assert!(!bob_browser.get("/app/tokens").await.body.contains("laptop"));
+    assert!(
+        !bob_browser
+            .get("/app/settings")
+            .await
+            .body
+            .contains("laptop")
+    );
 }
 
 #[tokio::test]
@@ -253,7 +259,7 @@ async fn token_forms_need_csrf_and_login() {
     let server = TestServer::new().await;
     server
         .client("192.0.2.9")
-        .get("/app/tokens")
+        .get("/app/settings")
         .await
         .assert_redirect("/login");
 
@@ -294,7 +300,7 @@ async fn invalid_token_names_are_rejected() {
     let long = "x".repeat(101);
     for name in ["", "   ", long.as_str()] {
         let response = browser
-            .submit("/app/tokens", "/app/tokens", &[("name", name)])
+            .submit("/app/settings", "/app/tokens", &[("name", name)])
             .await;
         assert_eq!(response.status, StatusCode::UNPROCESSABLE_ENTITY);
         assert!(response.body.contains("1 bis 100 Zeichen"));
@@ -302,8 +308,9 @@ async fn invalid_token_names_are_rejected() {
     }
     // Names are escaped in the list.
     create_token(&mut browser, "<b>x</b>").await;
-    let page = browser.get("/app/tokens").await;
-    assert!(page.body.contains("&lt;b&gt;x&lt;/b&gt;"));
+    let page = browser.get("/app/settings").await;
+    assert!(!page.body.contains("<b>x</b>"));
+    assert!(page.body.contains("&#60;b&#62;x&#60;/b&#62;") || page.body.contains("&lt;b&gt;x"));
     assert_eq!(
         api_tokens::list_for_user(&server.state.db, user.id)
             .await

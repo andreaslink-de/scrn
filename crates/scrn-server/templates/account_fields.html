@@ -1,0 +1,14 @@
+<div class="field">
+<label for="username">{{ page.t("field.username") }}</label>
+<input id="username" name="username" type="text" value="{{ username }}" autocomplete="username" maxlength="64" required aria-describedby="username-hint">
+<small id="username-hint" class="hint">{{ page.t("field.username_hint") }}</small>
+</div>
+<div class="field">
+<label for="password">{{ page.t("field.password") }}</label>
+<input id="password" name="password" type="password" autocomplete="new-password" minlength="{{ min_password }}" required aria-describedby="password-hint">
+<small id="password-hint" class="hint">{{ page.tf("field.password_hint", "min", min_password.to_string().as_str()) }}</small>
+</div>
+<div class="field">
+<label for="password_confirm">{{ page.t("field.password_confirm") }}</label>
+<input id="password_confirm" name="password_confirm" type="password" autocomplete="new-password" minlength="{{ min_password }}" required>
+</div>

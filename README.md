@@ -67,10 +67,20 @@ administration page (`/admin`), it is single-use and expires after the chosen
 number of days. Administrators can disable accounts, which also ends their
 sessions.
 
+### Web interface
+
+The web UI speaks German (default) and English and has a dark (default) and a
+light theme. Logged-in users choose both, plus the default expiry of public
+links, under *Settings* (`/app/settings`); the page also shows the storage
+usage and manages API tokens. Logged-out pages follow the browser language
+and offer a switch in the footer. Administrators see each user's storage
+usage on `/admin` and can set a per-user quota in MiB (empty for the server
+default, 0 for unlimited).
+
 ### API tokens
 
 The desktop client authenticates with an API token. Create one per device on
-the page *API tokens* (`/app/tokens`). The token (`scrn_…`) is shown only
+the *Settings* page (`/app/settings`). The token (`scrn_…`) is shown only
 once; the server stores just its SHA-256 hash. Test it with:
 
 ```sh

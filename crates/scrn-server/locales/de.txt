@@ -3,7 +3,6 @@
 app.name = SCRN
 
 nav.home = Übersicht
-nav.tokens = API-Tokens
 nav.admin = Verwaltung
 nav.logout = Abmelden
 
@@ -86,3 +85,41 @@ error.invite_invalid = Diese Einladung ist ungültig, abgelaufen oder wurde bere
 error.invite_days = Die Gültigkeit muss zwischen 1 und 30 Tagen liegen.
 error.cannot_disable_self = Du kannst dein eigenes Konto nicht deaktivieren.
 error.token_name = Der Name muss 1 bis 100 Zeichen lang sein.
+
+# UI foundation (S7a)
+nav.skip = Zum Inhalt springen
+nav.label = Hauptnavigation
+nav.settings = Einstellungen
+lang.de = Deutsch
+lang.en = English
+theme.dark = Dunkel
+theme.light = Hell
+prefs.apply = Übernehmen
+home.gallery_soon = Hier erscheint bald die Galerie deiner Screenshots.
+settings.title = Einstellungen
+settings.prefs = Darstellung und Sprache
+settings.language = Sprache
+settings.theme = Farbschema
+settings.expiry = Standard-Ablauf öffentlicher Links
+settings.expiry_hint = Gilt für neue öffentliche Uploads, wenn der Client nichts anderes angibt.
+settings.custom_days = Eigene Dauer in Tagen (bei „Eigene Dauer“)
+settings.save = Speichern
+settings.saved = Einstellungen gespeichert.
+expiry.never = Nie
+expiry.1 = 1 Tag
+expiry.7 = 7 Tage
+expiry.30 = 30 Tage
+expiry.custom = Eigene Dauer
+storage.title = Speicherplatz
+storage.label = Belegter Speicherplatz
+storage.used_of = {used} von {quota} belegt
+storage.used_unlimited = {used} belegt, kein Limit
+storage.unlimited = unbegrenzt
+admin.col.storage = Speicher
+admin.col.quota = Kontingent (MiB)
+admin.quota.hint = Kontingent in MiB: leer bedeutet Serverstandard ({default}), 0 bedeutet unbegrenzt. Änderungen gelten sofort, gelöscht wird nie etwas.
+admin.quota.label = Kontingent von {username} in MiB
+admin.quota.default = Standard
+admin.quota.save = Setzen
+error.expiry_days = Die eigene Dauer muss zwischen 1 und 3650 Tagen liegen.
+error.quota_invalid = Das Kontingent muss leer oder eine ganze Zahl ab 0 sein.

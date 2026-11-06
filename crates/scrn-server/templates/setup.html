@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+<p>{{ page.t("setup.intro") }}</p>
+{% if let Some(error) = error %}<p class="alert" role="alert">{{ error }}</p>{% endif %}
+<form method="post" action="/setup">
+<input type="hidden" name="csrf" value="{{ csrf }}">
+<div class="field">
+<label for="setup_token">{{ page.t("setup.token") }}</label>
+<input id="setup_token" name="setup_token" type="password" autocomplete="off" required>
+</div>
+{% include "account_fields.html" %}
+<button type="submit">{{ page.t("setup.submit") }}</button>
+</form>
+</div>
+{% endblock %}

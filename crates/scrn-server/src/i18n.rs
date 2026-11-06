@@ -4,9 +4,7 @@
 //! at compile time. Format: one `key = value` per line, `#` starts a comment
 //! line. Values may contain `{name}` placeholders.
 //!
-//! Language selection is simple for now: the user's setting when logged in,
-//! German otherwise. Cookie and `Accept-Language` support follow with the UI
-//! foundation (step S7a).
+//! Which language a request gets is decided in [`crate::prefs`].
 
 use std::collections::HashMap;
 use std::sync::LazyLock;
@@ -186,6 +184,62 @@ mod tests {
         assert_eq!(
             i18n.tf(Language::En, "home.signed_in_as", &[("username", "alice")]),
             "Signed in as alice."
+        );
+    }
+
+    /// Every catalog key referenced in templates or in the server code must
+    /// exist. Keys are found as string literals of the form `"group.name"`
+    /// whose group is used by the catalogs.
+    #[test]
+    fn all_referenced_keys_exist() {
+        let catalogs = I18n::load().unwrap();
+        let groups: std::collections::HashSet<&str> = catalogs
+            .de
+            .keys()
+            .filter_map(|k| k.split('.').next())
+            .collect();
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let mut files = Vec::new();
+        for dir in ["templates", "src", "src/routes", "src/api", "src/repo"] {
+            for entry in std::fs::read_dir(root.join(dir)).unwrap() {
+                let path = entry.unwrap().path();
+                if path.is_file() {
+                    files.push(path);
+                }
+            }
+        }
+        let mut checked = 0;
+        for path in files {
+            let text = std::fs::read_to_string(&path).unwrap();
+            for literal in text.split('"').skip(1).step_by(2) {
+                let Some((group, rest)) = literal.split_once('.') else {
+                    continue;
+                };
+                // File names like "error.html" or "app.css" are not keys.
+                let is_file = [".html", ".css", ".js", ".svg", ".png", ".txt"]
+                    .iter()
+                    .any(|ext| literal.ends_with(ext));
+                let looks_like_key = groups.contains(group)
+                    && !rest.is_empty()
+                    && !is_file
+                    && literal.bytes().all(|b| {
+                        b.is_ascii_lowercase() || b.is_ascii_digit() || b"._".contains(&b)
+                    });
+                if looks_like_key {
+                    checked += 1;
+                    for (lang, map) in [("de", &catalogs.de), ("en", &catalogs.en)] {
+                        assert!(
+                            map.contains_key(literal),
+                            "{} uses {literal:?}, missing in {lang}",
+                            path.display()
+                        );
+                    }
+                }
+            }
+        }
+        assert!(
+            checked > 50,
+            "only {checked} keys found, is the scan broken?"
         );
     }
 }

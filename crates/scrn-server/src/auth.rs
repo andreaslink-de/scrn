@@ -39,15 +39,16 @@ pub enum FieldError {
 }
 
 impl FieldError {
-    /// Translated, escaped message.
-    pub fn message(self, ctx: &crate::html::Ctx<'_>) -> String {
+    /// Translated message (not escaped; templates escape it).
+    pub fn message(self, lang: crate::repo::users::Language) -> String {
+        let i18n = crate::i18n::catalogs();
         let min = MIN_PASSWORD_CHARS.to_string();
         let max = MAX_PASSWORD_CHARS.to_string();
         match self {
-            Self::UsernameInvalid => ctx.t("error.username_invalid"),
-            Self::PasswordTooShort => ctx.tf("error.password_too_short", &[("min", &min)]),
-            Self::PasswordTooLong => ctx.tf("error.password_too_long", &[("max", &max)]),
-            Self::PasswordMismatch => ctx.t("error.password_mismatch"),
+            Self::UsernameInvalid => i18n.t(lang, "error.username_invalid").to_owned(),
+            Self::PasswordTooShort => i18n.tf(lang, "error.password_too_short", &[("min", &min)]),
+            Self::PasswordTooLong => i18n.tf(lang, "error.password_too_long", &[("max", &max)]),
+            Self::PasswordMismatch => i18n.t(lang, "error.password_mismatch").to_owned(),
         }
     }
 }

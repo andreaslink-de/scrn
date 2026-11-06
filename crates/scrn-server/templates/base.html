@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="{{ page.lang_code() }}" data-theme="{{ page.theme_code() }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="{% if page.is_dark() %}dark{% else %}light{% endif %}">
+<meta name="htmx-config" content='{"includeIndicatorStyles":false,"allowEval":false,"allowScriptTags":false}'>
+<title>{{ page.t(page.title_key) }} · {{ page.t("app.name") }}</title>
+<link rel="icon" href="{{ page.asset("favicon.svg") }}" type="image/svg+xml">
+<link rel="stylesheet" href="{{ page.asset("app.css") }}">
+<script src="{{ page.asset("htmx.min.js") }}" defer></script>
+</head>
+<body>
+<a class="skip-link" href="#main">{{ page.t("nav.skip") }}</a>
+<header class="topbar">
+<div class="topbar-inner">
+<a class="brand" href="/">{{ page.t("app.name") }}</a>
+{% if let Some(nav) = page.nav %}
+<nav class="nav" aria-label="{{ page.t("nav.label") }}">
+<a href="/app"{% if page.is_active("/app") %} aria-current="page"{% endif %}>{{ page.t("nav.home") }}</a>
+<a href="/app/settings"{% if page.is_active("/app/settings") %} aria-current="page"{% endif %}>{{ page.t("nav.settings") }}</a>
+{% if nav.is_admin %}<a href="/admin"{% if page.is_active("/admin") %} aria-current="page"{% endif %}>{{ page.t("nav.admin") }}</a>{% endif %}
+<span class="muted">{{ nav.username }}</span>
+<form method="post" action="/logout">
+<input type="hidden" name="csrf" value="{{ nav.csrf }}">
+<button type="submit" class="secondary small">{{ page.t("nav.logout") }}</button>
+</form>
+</nav>
+{% endif %}
+</div>
+</header>
+<main id="main"{% if page.narrow %} class="narrow"{% endif %}>
+<h1>{{ page.t(page.title_key) }}</h1>
+{% block content %}{% endblock %}
+</main>
+<footer>
+<div class="footer-inner">
+<span>{{ page.t("app.name") }} · Snap · Crop · Redact · Note</span>
+{% if let Some(csrf) = page.switch_csrf %}
+<form class="inline-form" method="post" action="/prefs">
+<input type="hidden" name="csrf" value="{{ csrf }}">
+<input type="hidden" name="back" value="{{ page.back }}">
+<div class="field">
+<label for="pref-lang">{{ page.t("settings.language") }}</label>
+<select id="pref-lang" name="lang" class="short">
+<option value="de"{% if page.lang_code() == "de" %} selected{% endif %}>{{ page.t("lang.de") }}</option>
+<option value="en"{% if page.lang_code() == "en" %} selected{% endif %}>{{ page.t("lang.en") }}</option>
+</select>
+</div>
+<div class="field">
+<label for="pref-theme">{{ page.t("settings.theme") }}</label>
+<select id="pref-theme" name="theme" class="short">
+<option value="dark"{% if page.is_dark() %} selected{% endif %}>{{ page.t("theme.dark") }}</option>
+<option value="light"{% if !page.is_dark() %} selected{% endif %}>{{ page.t("theme.light") }}</option>
+</select>
+</div>
+<button type="submit" class="secondary small">{{ page.t("prefs.apply") }}</button>
+</form>
+{% endif %}
+</div>
+</footer>
+</body>
+</html>

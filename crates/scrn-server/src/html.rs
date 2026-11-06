@@ -1,90 +1,192 @@
-//! Plain server-rendered HTML. Styling and a template engine follow in step
-//! S7a; until then pages are assembled here. All text comes from the
-//! translation catalogs and every dynamic value is escaped.
+//! Server-rendered HTML: the page context shared by all templates, the
+//! embedded static assets and the response headers of HTML pages.
+//!
+//! Templates live in `crates/scrn-server/templates` (askama, checked at
+//! compile time, HTML-escaped by default). Every visible text comes from the
+//! translation catalogs through [`Page::t`].
 
-use axum::http::header::{CACHE_CONTROL, CONTENT_TYPE};
+use std::sync::LazyLock;
+
+use askama::Template;
+use axum::extract::{Path, Query};
+use axum::http::header::{
+    CACHE_CONTROL, CONTENT_SECURITY_POLICY, CONTENT_TYPE, REFERRER_POLICY, X_CONTENT_TYPE_OPTIONS,
+    X_FRAME_OPTIONS,
+};
 use axum::http::{HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
+use serde::Deserialize;
 
-use crate::i18n::{self, I18n};
+use crate::auth::CurrentUser;
+use crate::crypto;
+use crate::error::AppError;
+use crate::i18n;
+use crate::prefs::{self, Prefs};
 use crate::repo::users::Language;
 
-/// Escapes text for use in HTML element content and quoted attributes.
-pub fn esc(text: &str) -> String {
-    let mut out = String::with_capacity(text.len());
-    for c in text.chars() {
-        match c {
-            '&' => out.push_str("&amp;"),
-            '<' => out.push_str("&lt;"),
-            '>' => out.push_str("&gt;"),
-            '"' => out.push_str("&quot;"),
-            '\'' => out.push_str("&#39;"),
-            _ => out.push(c),
-        }
-    }
-    out
-}
+/// Policy for HTML pages: only our own scripts, styles and images, no
+/// framing, forms only to this origin.
+pub const PAGE_CSP: &str = "default-src 'none'; script-src 'self'; style-src 'self'; \
+     img-src 'self' data:; connect-src 'self'; form-action 'self'; \
+     frame-ancestors 'none'; base-uri 'none'";
 
-/// Rendering context: catalogs and language.
-#[derive(Clone, Copy)]
-pub struct Ctx<'a> {
-    pub i18n: &'a I18n,
-    pub lang: Language,
-}
-
-impl<'a> Ctx<'a> {
-    pub fn new(lang: Language) -> Self {
-        Self {
-            i18n: i18n::catalogs(),
-            lang,
-        }
-    }
-
-    /// Translated and escaped message.
-    pub fn t(&self, key: &str) -> String {
-        esc(self.i18n.t(self.lang, key))
-    }
-
-    /// Translated message with placeholders, escaped as a whole.
-    pub fn tf(&self, key: &str, args: &[(&str, &str)]) -> String {
-        esc(&self.i18n.tf(self.lang, key, args))
-    }
-}
-
-/// Navigation for logged-in pages.
-pub struct Nav<'a> {
+/// Navigation of logged-in pages.
+#[derive(Debug, Clone)]
+pub struct Nav {
+    pub username: String,
     pub is_admin: bool,
-    pub csrf: &'a str,
+    /// CSRF token of the session, for the logout button.
+    pub csrf: String,
+    /// Path of the active navigation entry.
+    pub active: &'static str,
 }
 
-/// Renders a complete page.
-pub fn page(ctx: &Ctx<'_>, title_key: &str, nav: Option<&Nav<'_>>, body: &str) -> String {
-    let title = ctx.t(title_key);
-    let app = ctx.t("app.name");
-    let nav_html = nav.map_or_else(String::new, |nav| {
-        let admin = if nav.is_admin {
-            format!(r#" <a href="/admin">{}</a>"#, ctx.t("nav.admin"))
-        } else {
-            String::new()
-        };
-        format!(
-            r#"<nav><a href="/app">{home}</a> <a href="/app/tokens">{tokens}</a>{admin} <form method="post" action="/logout">{csrf}<button type="submit">{logout}</button></form></nav>"#,
-            home = ctx.t("nav.home"),
-            tokens = ctx.t("nav.tokens"),
-            csrf = csrf_field(nav.csrf),
-            logout = ctx.t("nav.logout"),
-        )
-    });
-    format!(
-        "<!DOCTYPE html>\n<html lang=\"{lang}\">\n<head>\n<meta charset=\"utf-8\">\n\
-         <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n\
-         <title>{title} · {app}</title>\n</head>\n<body>\n{nav_html}\n<main>\n<h1>{title}</h1>\n{body}\n</main>\n</body>\n</html>\n",
-        lang = i18n::code(ctx.lang),
-    )
+/// Context available to every template as `page`.
+#[derive(Debug, Clone)]
+pub struct Page {
+    pub prefs: Prefs,
+    pub title_key: &'static str,
+    pub nav: Option<Nav>,
+    /// CSRF token for the language and theme switch of logged-out pages.
+    /// Without it the switch is not shown.
+    pub switch_csrf: Option<String>,
+    /// Where the switch returns to.
+    pub back: String,
+    /// Narrow single-column layout for forms like the login.
+    pub narrow: bool,
 }
 
-/// Wraps rendered HTML in a response. Pages may contain one-time secrets
-/// or per-user data, so they are never cached.
+impl Page {
+    /// A logged-out page.
+    pub fn public(
+        prefs: Prefs,
+        title_key: &'static str,
+        switch_csrf: Option<String>,
+        back: &str,
+    ) -> Self {
+        Self {
+            prefs,
+            title_key,
+            nav: None,
+            switch_csrf,
+            back: back.to_owned(),
+            narrow: true,
+        }
+    }
+
+    /// A page for a logged-in user.
+    pub fn user(user: &CurrentUser, title_key: &'static str, active: &'static str) -> Self {
+        Self {
+            prefs: Prefs::of_user(&user.user),
+            title_key,
+            nav: Some(Nav {
+                username: user.user.username.clone(),
+                is_admin: user.is_admin(),
+                csrf: user.csrf.clone(),
+                active,
+            }),
+            switch_csrf: None,
+            back: active.to_owned(),
+            narrow: false,
+        }
+    }
+
+    pub fn lang(&self) -> Language {
+        self.prefs.lang
+    }
+
+    /// Translated message (escaped by the template).
+    pub fn t<'a>(&self, key: &'a str) -> &'a str {
+        i18n::catalogs().t(self.prefs.lang, key)
+    }
+
+    /// Translated message with one `{name}` placeholder.
+    pub fn tf(&self, key: &str, name: &str, value: &str) -> String {
+        i18n::catalogs().tf(self.prefs.lang, key, &[(name, value)])
+    }
+
+    /// Translated message with two placeholders.
+    pub fn tf2(&self, key: &str, n1: &str, v1: &str, n2: &str, v2: &str) -> String {
+        i18n::catalogs().tf(self.prefs.lang, key, &[(n1, v1), (n2, v2)])
+    }
+
+    pub fn lang_code(&self) -> &'static str {
+        prefs::language_code(self.prefs.lang)
+    }
+
+    pub fn theme_code(&self) -> &'static str {
+        prefs::theme_code(self.prefs.theme)
+    }
+
+    pub fn is_dark(&self) -> bool {
+        self.prefs.theme == crate::repo::users::Theme::Dark
+    }
+
+    /// URL of an embedded asset, versioned by its content hash.
+    pub fn asset(&self, name: &str) -> String {
+        asset_url(name)
+    }
+
+    pub fn time(&self, ts: impl Int) -> String {
+        format_time(ts.int())
+    }
+
+    pub fn bytes(&self, n: impl Int) -> String {
+        format_bytes(n.int(), self.prefs.lang)
+    }
+
+    pub fn is_active(&self, path: &str) -> bool {
+        self.nav.as_ref().is_some_and(|nav| nav.active == path)
+    }
+}
+
+/// Integers passed from templates, which hand over references.
+pub trait Int {
+    fn int(&self) -> i64;
+}
+
+impl Int for i64 {
+    fn int(&self) -> i64 {
+        *self
+    }
+}
+
+impl<T: Int + ?Sized> Int for &T {
+    fn int(&self) -> i64 {
+        (**self).int()
+    }
+}
+
+/// Storage usage for the progress bar template (`usage.html`).
+#[derive(Debug, Clone, Copy)]
+pub struct Usage {
+    pub used: i64,
+    /// `None` means unlimited.
+    pub quota: Option<i64>,
+    pub percent: i64,
+}
+
+impl Usage {
+    pub fn new(used: i64, quota: Option<i64>) -> Self {
+        Self {
+            used,
+            quota,
+            percent: quota.map_or(0, |q| percent(used, q)),
+        }
+    }
+}
+
+/// Renders a template into an HTML response.
+pub fn render(status: StatusCode, template: &impl Template) -> Result<Response, AppError> {
+    let html = template
+        .render()
+        .map_err(|err| AppError::Internal(format!("template error: {err}")))?;
+    Ok(response(status, html))
+}
+
+/// Wraps rendered HTML in a response with the security headers of pages.
+/// Pages may contain one-time secrets or per-user data, so they are never
+/// cached.
 pub fn response(status: StatusCode, html: String) -> Response {
     let mut response = (status, html).into_response();
     let headers = response.headers_mut();
@@ -93,65 +195,108 @@ pub fn response(status: StatusCode, html: String) -> Response {
         HeaderValue::from_static("text/html; charset=utf-8"),
     );
     headers.insert(CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    headers.insert(CONTENT_SECURITY_POLICY, HeaderValue::from_static(PAGE_CSP));
+    headers.insert(X_CONTENT_TYPE_OPTIONS, HeaderValue::from_static("nosniff"));
+    headers.insert(X_FRAME_OPTIONS, HeaderValue::from_static("DENY"));
+    headers.insert(REFERRER_POLICY, HeaderValue::from_static("same-origin"));
     response
 }
 
-/// An error page with a translated message.
-pub fn error_page(lang: Language, status: StatusCode, message_key: &str) -> Response {
-    let ctx = Ctx::new(lang);
-    let body = format!(
-        r#"<p role="alert">{}</p>
-<p><a href="/">{}</a></p>"#,
-        ctx.t(message_key),
-        ctx.t("error.back")
-    );
-    response(status, page(&ctx, "error.title", None, &body))
+#[derive(Template)]
+#[template(path = "error.html")]
+struct ErrorTemplate<'a> {
+    page: Page,
+    message: &'a str,
 }
 
-pub fn csrf_field(token: &str) -> String {
-    format!(
-        r#"<input type="hidden" name="csrf" value="{}">"#,
-        esc(token)
-    )
-}
-
-/// An already translated, escaped error message, or nothing.
-pub fn alert(message: Option<&str>) -> String {
-    message.map_or_else(String::new, |m| format!(r#"<p role="alert">{m}</p>"#))
-}
-
-/// A labelled input field.
-pub struct Field<'a> {
-    pub name: &'a str,
-    pub label: String,
-    pub kind: &'a str,
-    pub value: &'a str,
-    pub autocomplete: &'a str,
-    pub hint: Option<String>,
-    pub extra: &'a str,
-}
-
-impl Field<'_> {
-    pub fn render(&self) -> String {
-        let hint = self.hint.as_ref().map_or_else(String::new, |h| {
-            format!(r#"<br><small id="{}-hint">{h}</small>"#, self.name)
-        });
-        let described = if self.hint.is_some() {
-            format!(r#" aria-describedby="{}-hint""#, self.name)
-        } else {
-            String::new()
-        };
-        format!(
-            r#"<p><label for="{name}">{label}</label><br><input id="{name}" name="{name}" type="{kind}" value="{value}" autocomplete="{ac}" required{described}{extra}>{hint}</p>"#,
-            name = self.name,
-            label = self.label,
-            kind = self.kind,
-            value = esc(self.value),
-            ac = self.autocomplete,
-            extra = self.extra,
-        )
+/// An error page with a translated message. Never fails: if the template
+/// cannot be rendered, a plain status response is returned.
+pub fn error_page(prefs: Prefs, status: StatusCode, message_key: &str) -> Response {
+    let page = Page::public(prefs, "error.title", None, "/");
+    let message = i18n::catalogs().t(prefs.lang, message_key);
+    match (ErrorTemplate { page, message }).render() {
+        Ok(html) => response(status, html),
+        Err(err) => {
+            tracing::error!(error = %err, "rendering the error page failed");
+            status.into_response()
+        }
     }
 }
+
+// --- Static assets -----------------------------------------------------------
+
+struct Asset {
+    name: &'static str,
+    content_type: &'static str,
+    data: &'static [u8],
+}
+
+const ASSETS: &[Asset] = &[
+    Asset {
+        name: "app.css",
+        content_type: "text/css; charset=utf-8",
+        data: include_bytes!("../static/app.css"),
+    },
+    Asset {
+        name: "htmx.min.js",
+        content_type: "text/javascript; charset=utf-8",
+        data: include_bytes!("../static/htmx.min.js"),
+    },
+    Asset {
+        name: "favicon.svg",
+        content_type: "image/svg+xml",
+        data: include_bytes!("../static/favicon.svg"),
+    },
+];
+
+/// Short content hashes, used as cache-busting versions.
+static VERSIONS: LazyLock<Vec<String>> = LazyLock::new(|| {
+    ASSETS
+        .iter()
+        .map(|a| crypto::hex_encode(&crypto::sha256(a.data)[..6]))
+        .collect()
+});
+
+fn find_asset(name: &str) -> Option<(&'static Asset, &'static str)> {
+    ASSETS
+        .iter()
+        .zip(VERSIONS.iter())
+        .find(|(a, _)| a.name == name)
+        .map(|(a, v)| (a, v.as_str()))
+}
+
+pub fn asset_url(name: &str) -> String {
+    match find_asset(name) {
+        Some((asset, version)) => format!("/static/{}?v={version}", asset.name),
+        None => format!("/static/{name}"),
+    }
+}
+
+#[derive(Deserialize)]
+pub struct AssetQuery {
+    v: Option<String>,
+}
+
+/// `GET /static/{file}`. Requests with the current version may be cached
+/// forever; others are revalidated.
+pub async fn serve_static(Path(file): Path<String>, Query(query): Query<AssetQuery>) -> Response {
+    let Some((asset, version)) = find_asset(&file) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let cache = if query.v.as_deref() == Some(version) {
+        "public, max-age=31536000, immutable"
+    } else {
+        "no-cache"
+    };
+    let mut response = asset.data.into_response();
+    let headers = response.headers_mut();
+    headers.insert(CONTENT_TYPE, HeaderValue::from_static(asset.content_type));
+    headers.insert(CACHE_CONTROL, HeaderValue::from_static(cache));
+    headers.insert(X_CONTENT_TYPE_OPTIONS, HeaderValue::from_static("nosniff"));
+    response
+}
+
+// --- Formatting ---------------------------------------------------------------
 
 /// Formats a Unix timestamp as `YYYY-MM-DD HH:MM UTC`.
 pub fn format_time(ts: i64) -> String {
@@ -180,17 +325,41 @@ fn civil_from_days(days: i64) -> (i64, i64, i64) {
     (y, m, d)
 }
 
+/// Formats a byte count with binary units and one decimal, using the
+/// decimal separator of the language: `1,5 MiB` or `1.5 MiB`.
+pub fn format_bytes(bytes: i64, lang: Language) -> String {
+    const UNITS: [&str; 5] = ["B", "KiB", "MiB", "GiB", "TiB"];
+    let bytes = bytes.max(0);
+    if bytes < 1024 {
+        return format!("{bytes} B");
+    }
+    let mut unit = 0;
+    let mut scaled = bytes;
+    while scaled >= 1024 * 1024 && unit < UNITS.len() - 2 {
+        scaled /= 1024;
+        unit += 1;
+    }
+    // `scaled` is in units of UNITS[unit]; show it in the next unit with
+    // one decimal, rounded.
+    let tenths = (scaled * 10 + 512) / 1024;
+    let sep = match lang {
+        Language::De => ',',
+        Language::En => '.',
+    };
+    format!("{}{sep}{} {}", tenths / 10, tenths % 10, UNITS[unit + 1])
+}
+
+/// Percentage for progress bars, clamped to 0..=100.
+pub fn percent(used: i64, limit: i64) -> i64 {
+    if limit <= 0 {
+        return 0;
+    }
+    (used.max(0).saturating_mul(100) / limit).min(100)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn escapes_html() {
-        assert_eq!(
-            esc(r#"<a href="x">'&'</a>"#),
-            "&lt;a href=&quot;x&quot;&gt;&#39;&amp;&#39;&lt;/a&gt;"
-        );
-    }
 
     #[test]
     fn formats_timestamps() {
@@ -201,24 +370,44 @@ mod tests {
     }
 
     #[test]
-    fn page_uses_language_and_escapes_values() {
-        let ctx = Ctx::new(Language::En);
-        let html = page(&ctx, "login.title", None, "<p>x</p>");
-        assert!(html.contains(r#"<html lang="en">"#));
-        assert!(html.contains("<title>Sign in · SCRN</title>"));
-        let field = Field {
-            name: "username",
-            label: ctx.t("field.username"),
-            kind: "text",
-            value: "\"><script>",
-            autocomplete: "username",
-            hint: None,
-            extra: "",
-        };
-        assert!(
-            field
-                .render()
-                .contains(r#"value="&quot;&gt;&lt;script&gt;""#)
+    fn formats_bytes() {
+        assert_eq!(format_bytes(0, Language::De), "0 B");
+        assert_eq!(format_bytes(1023, Language::En), "1023 B");
+        assert_eq!(format_bytes(1024, Language::En), "1.0 KiB");
+        assert_eq!(format_bytes(1536, Language::De), "1,5 KiB");
+        assert_eq!(format_bytes(1024 * 1024 * 1024, Language::En), "1.0 GiB");
+        assert_eq!(
+            format_bytes(5 * 1024 * 1024 + 512 * 1024, Language::En),
+            "5.5 MiB"
         );
+        assert_eq!(format_bytes(-5, Language::En), "0 B");
+        assert_eq!(format_bytes(i64::MAX, Language::En), "8388608.0 TiB");
+    }
+
+    #[test]
+    fn percentages() {
+        assert_eq!(percent(0, 100), 0);
+        assert_eq!(percent(50, 100), 50);
+        assert_eq!(percent(500, 100), 100);
+        assert_eq!(percent(5, 0), 0);
+    }
+
+    #[test]
+    fn assets_are_versioned() {
+        let url = asset_url("app.css");
+        assert!(url.starts_with("/static/app.css?v="), "{url}");
+        assert_eq!(url.len(), "/static/app.css?v=".len() + 12);
+        assert_eq!(asset_url("missing.js"), "/static/missing.js");
+    }
+
+    #[test]
+    fn error_page_is_translated() {
+        let prefs = Prefs {
+            lang: Language::En,
+            theme: crate::repo::users::Theme::Light,
+        };
+        let response = error_page(prefs, StatusCode::NOT_FOUND, "error.not_found");
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        assert_eq!(response.headers()[CONTENT_SECURITY_POLICY], PAGE_CSP);
     }
 }
