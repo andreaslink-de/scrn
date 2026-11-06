@@ -186,3 +186,7 @@ passkey.duplicate = Dieser Passkey ist bereits registriert.
 passkey.busy = Der Server ist gerade ausgelastet. Bitte versuche es gleich noch einmal.
 error.passkey_name = Der Name muss 1 bis 100 Zeichen lang sein.
 error.passkey_last = Das ist deine letzte Anmeldemöglichkeit und kann nicht gelöscht werden.
+admin.backup = Backup
+admin.backup.hint = Lädt ein tar-Archiv mit einer konsistenten Kopie der Datenbank und aller Screenshots herunter, erstellt im laufenden Betrieb. Auf dem Server wird nichts gespeichert. Zum Wiederherstellen siehe „Backup and restore“ in der README.
+admin.backup.download = Backup herunterladen
+error.backup_running = Es läuft bereits ein Backup-Download. Bitte warte, bis er fertig ist.

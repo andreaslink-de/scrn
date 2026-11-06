@@ -74,4 +74,13 @@
 </div>
 {% endif %}
 </section>
+
+<section class="card" aria-labelledby="backup-title">
+<h2 id="backup-title">{{ page.t("admin.backup") }}</h2>
+<p class="muted">{{ page.t("admin.backup.hint") }}</p>
+<form method="post" action="/admin/backup">
+<input type="hidden" name="csrf" value="{{ csrf }}">
+<button type="submit">{{ page.t("admin.backup.download") }}</button>
+</form>
+</section>
 {% endblock %}

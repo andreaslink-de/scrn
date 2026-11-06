@@ -12,12 +12,10 @@
 //! The public route checks the expiry on every request as well, so a link
 //! never works past its expiry, even between two passes.
 
-use std::fs::Metadata;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::{Duration, SystemTime};
 
 use tokio::task::JoinHandle;
-use uuid::Uuid;
 
 use crate::repo::{RepoError, screenshots, sessions};
 use crate::{AppState, storage};
@@ -87,7 +85,7 @@ pub async fn remove_orphans(
     min_age: Duration,
 ) -> Result<u64, RepoError> {
     let mut removed = sweep(state, dir, None, now, min_age).await?;
-    for (user_id, path) in user_dirs(dir).await {
+    for (user_id, path) in storage::user_dirs(dir).await {
         removed += sweep(state, &path, Some(user_id), now, min_age).await?;
     }
     Ok(removed)
@@ -103,7 +101,7 @@ async fn sweep(
     min_age: Duration,
 ) -> Result<u64, RepoError> {
     let mut removed = 0;
-    for (id, path, meta) in screenshot_files(dir).await {
+    for (id, path, meta) in storage::screenshot_files(dir).await {
         let old_enough = meta
             .modified()
             .ok()
@@ -139,7 +137,7 @@ async fn sweep(
 /// cannot be moved is logged and tried again on the next start.
 pub async fn move_legacy_files(db: &sqlx::SqlitePool, dir: &Path) -> Result<u64, RepoError> {
     let mut moved = 0;
-    for (id, path, _) in screenshot_files(dir).await {
+    for (id, path, _) in storage::screenshot_files(dir).await {
         let Some(user_id) = screenshots::owner(db, id).await? else {
             continue;
         };
@@ -162,93 +160,4 @@ pub async fn move_legacy_files(db: &sqlx::SqlitePool, dir: &Path) -> Result<u64,
         tracing::info!(files = moved, "moved files into user directories");
     }
     Ok(moved)
-}
-
-/// The regular files in `dir` whose names we write, with their IDs.
-async fn screenshot_files(dir: &Path) -> Vec<(Uuid, PathBuf, Metadata)> {
-    let mut files = Vec::new();
-    for (name, path, meta) in list(dir).await {
-        if let Some(id) = screenshot_id(&name).filter(|_| meta.is_file()) {
-            files.push((id, path, meta));
-        }
-    }
-    files
-}
-
-/// The user directories in `dir`: subdirectories named by a user ID.
-async fn user_dirs(dir: &Path) -> Vec<(i64, PathBuf)> {
-    let mut dirs = Vec::new();
-    for (name, path, meta) in list(dir).await {
-        let user_id = name
-            .parse::<i64>()
-            .ok()
-            .filter(|id| *id > 0 && id.to_string() == name);
-        if let Some(user_id) = user_id.filter(|_| meta.is_dir()) {
-            dirs.push((user_id, path));
-        }
-    }
-    dirs
-}
-
-/// Entries of `dir` with UTF-8 names. Listing errors are logged, and what
-/// was read until then is returned.
-async fn list(dir: &Path) -> Vec<(String, PathBuf, Metadata)> {
-    let mut found = Vec::new();
-    let mut entries = match tokio::fs::read_dir(dir).await {
-        Ok(entries) => entries,
-        Err(err) => {
-            tracing::warn!(error = %err, "cannot list the files directory");
-            return found;
-        }
-    };
-    loop {
-        let entry = match entries.next_entry().await {
-            Ok(Some(entry)) => entry,
-            Ok(None) => break,
-            Err(err) => {
-                tracing::warn!(error = %err, "listing the files directory failed");
-                break;
-            }
-        };
-        // `DirEntry::metadata` does not follow symbolic links, so a link
-        // is neither a file nor a directory here and is never touched.
-        let (Ok(name), Ok(meta)) = (entry.file_name().into_string(), entry.metadata().await) else {
-            continue;
-        };
-        found.push((name, entry.path(), meta));
-    }
-    found
-}
-
-/// The screenshot ID of a file name we write, if it is one.
-fn screenshot_id(name: &str) -> Option<Uuid> {
-    let stem = name
-        .strip_suffix(".thumb.png")
-        .or_else(|| name.strip_suffix(".png"))?;
-    // Only the canonical form we write: hyphenated lowercase.
-    let id = Uuid::parse_str(stem).ok()?;
-    (id.to_string() == stem).then_some(id)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn file_names() {
-        let id = Uuid::new_v4();
-        assert_eq!(screenshot_id(&format!("{id}.png")), Some(id));
-        assert_eq!(screenshot_id(&format!("{id}.thumb.png")), Some(id));
-        let upper = id.to_string().to_uppercase();
-        for name in [
-            format!("{upper}.png"),
-            format!("{id}.jpg"),
-            format!("{id}"),
-            format!("{}.png", id.simple()),
-            "notes.txt".to_owned(),
-            ".png".to_owned(),
-        ] {
-            assert_eq!(screenshot_id(&name), None, "{name}");
-        }
-    }
 }

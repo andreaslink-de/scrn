@@ -1,16 +1,18 @@
-//! Administration: invitations and user accounts.
+//! Administration: invitations, user accounts and the backup download.
 
 use std::collections::HashMap;
 
 use askama::Template;
 use axum::Form;
 use axum::extract::{Path, State};
-use axum::http::StatusCode;
+use axum::http::header::{CACHE_CONTROL, CONTENT_DISPOSITION, CONTENT_LENGTH, CONTENT_TYPE};
+use axum::http::{HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Redirect, Response};
 use serde::Deserialize;
 
 use crate::AppState;
 use crate::auth::{AdminUser, CurrentUser};
+use crate::backup;
 use crate::crypto::SecretToken;
 use crate::error::AppError;
 use crate::html::{self, Page, Usage};
@@ -224,6 +226,49 @@ pub async fn enable_user(
     }
     tracing::info!(user_id = id, by = admin.user.id, "user enabled");
     Ok(Redirect::to("/admin").into_response())
+}
+
+/// Streams a backup archive: a database snapshot and all screenshot files.
+/// A POST with CSRF token, so that no other site can start the heavy work
+/// in an administrator's browser.
+pub async fn download_backup(
+    State(state): State<AppState>,
+    AdminUser(admin): AdminUser,
+    Form(form): Form<CsrfForm>,
+) -> Result<Response, AppError> {
+    admin.verify_csrf(&form.csrf)?;
+    let Ok(permit) = state.backup_permit.clone().try_acquire_owned() else {
+        return render(
+            &state,
+            &admin,
+            Notice::Error("error.backup_running"),
+            StatusCode::CONFLICT,
+        )
+        .await;
+    };
+    let archive = backup::prepare(&state.db, &state.config.data_dir, &state.config.files_dir())
+        .await
+        .map_err(|err| AppError::Internal(format!("preparing the backup failed: {err}")))?;
+    tracing::info!(
+        by = admin.user.id,
+        files = archive.entries.len() - 1,
+        bytes = archive.size(),
+        "backup download started"
+    );
+    let disposition = format!(
+        "attachment; filename=\"{}\"",
+        backup::file_name(state.clock.now())
+    );
+    let size = archive.size();
+    let mut response = backup::body(archive, permit).into_response();
+    let headers = response.headers_mut();
+    headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/x-tar"));
+    headers.insert(CONTENT_LENGTH, HeaderValue::from(size));
+    headers.insert(CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    if let Ok(value) = HeaderValue::from_str(&disposition) {
+        headers.insert(CONTENT_DISPOSITION, value);
+    }
+    Ok(response)
 }
 
 async fn render(
