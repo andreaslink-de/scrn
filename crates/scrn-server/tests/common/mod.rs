@@ -94,9 +94,16 @@ impl TestServer {
 /// Creates an API token for `user` directly in the database.
 pub async fn api_token(server: &TestServer, user: &User) -> String {
     let secret = crypto::ApiTokenSecret::generate().unwrap();
-    scrn_server::repo::api_tokens::create(&server.state.db, user.id, "test", &secret.hash, START)
-        .await
-        .unwrap();
+    scrn_server::repo::api_tokens::create(
+        &server.state.db,
+        user.id,
+        None,
+        "test",
+        &secret.hash,
+        START,
+    )
+    .await
+    .unwrap();
     secret.token
 }
 

@@ -32,6 +32,7 @@ async fn startup_creates_all_tables() {
         tables,
         [
             "api_tokens",
+            "device_groups",
             "invites",
             "passkeys",
             "password_resets",
@@ -71,6 +72,7 @@ async fn data_survives_restart() {
     let shot = screenshots::insert(
         &state.db,
         &NewScreenshot {
+            token_id: None,
             id: uuid::Uuid::new_v4(),
             user_id: user.id,
             public: Some(PublicLink {

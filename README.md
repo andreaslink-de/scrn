@@ -212,6 +212,20 @@ curl -H "Authorization: Bearer scrn_…" <SCRN_BASE_URL>/api/v1/me
 
 Revoked tokens and tokens of disabled accounts are rejected with 401.
 
+### Device groups
+
+Every API token belongs to a device group, such as *Work* or *Home*. Each
+account starts with one default group; more groups are created, renamed
+and deleted under *Settings → Device groups*. A token can move to another
+group at any time. A screenshot belongs to the group of the token that
+uploaded it, so its screenshots move along. Screenshots uploaded before
+groups existed belong to the default group. Deleting a group moves its
+tokens to the default group.
+
+With two or more groups the gallery shows a second filter row to show only
+one group. The desktop client needs no change: the token decides the
+group.
+
 ### Uploading
 
 ```sh

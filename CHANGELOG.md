@@ -19,6 +19,11 @@ project uses [Semantic Versioning](https://semver.org/).
   (`docker compose exec scrn scrn-server reset-link admin`).
 - After the setup and after registering through an invitation, the
   settings page suggests adding a passkey.
+- Device groups such as *Work* or *Home* under *Settings → Device
+  groups*. Every API token belongs to one group and can be moved later;
+  groups can be renamed and deleted (their tokens move to the default
+  group). Screenshots belong to the group of the token that uploaded
+  them. With two or more groups the gallery filters by group.
 
 ### Changed
 

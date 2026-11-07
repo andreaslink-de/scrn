@@ -215,3 +215,20 @@ reset.done = Dein neues Passwort ist gespeichert. Du kannst dich jetzt damit anm
 admin.reset.create = Reset-Link
 admin.reset.created = Link zum Zurücksetzen des Passworts für {username}. Er gilt 24 Stunden, nur einmal, und wird nur jetzt angezeigt:
 passkey.welcome = Willkommen! Lege jetzt einen Passkey an. Damit kommst du auch ohne Passwort in dein Konto.
+
+# Device groups
+groups.title = Gerätegruppen
+groups.intro = Ordne deine API-Tokens Gruppen zu, zum Beispiel „Arbeit“ oder „Zu Hause“. Ein Screenshot gehört zur Gruppe des Tokens, mit dem er hochgeladen wurde. Verschiebst du einen Token, wandern seine Screenshots mit. Ab zwei Gruppen kannst du die Galerie nach Gruppe filtern.
+groups.name = Gruppenname
+groups.create = Gruppe anlegen
+groups.col.tokens = Tokens
+groups.default = Standard
+groups.is_default = Standardgruppe
+groups.delete = Löschen
+groups.delete_hint = Ihre Tokens wandern in die Standardgruppe.
+groups.group = Gruppe
+groups.assign = Zuordnen
+gallery.group_filter = Gerätegruppe
+gallery.all_groups = Alle Geräte
+error.group_name = Der Gruppenname muss 1 bis 50 Zeichen lang sein.
+error.group_taken = Du hast bereits eine Gruppe mit diesem Namen.
