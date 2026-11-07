@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>SCRN</title>
+<link rel="stylesheet" href="settings.css">
+<script type="module" src="permission.js"></script>
+</head>
+<body>
+<main>
+<h1 data-t="permission.title"></h1>
+<section>
+  <p data-t="permission.text"></p>
+  <p class="hint" data-t="permission.hint"></p>
+  <div class="row">
+    <button type="button" id="allow" class="primary" data-t="permission.allow"></button>
+    <button type="button" id="cancel" class="secondary" data-t="permission.cancel"></button>
+  </div>
+  <p id="result" class="result" role="status"></p>
+</section>
+</main>
+</body>
+</html>

@@ -5,6 +5,17 @@ format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-11-07
+
+### Fixed
+
+- Screenshots work when the client is started from the menu after
+  installing the package. GNOME refused them because the app had no
+  stored screenshot permission and its own question had no window to
+  appear on. On the first refusal the client now asks in its own window
+  and stores the permission after *Allow*.
+- A failed screenshot shows a notification instead of doing nothing.
+
 ## [0.1.0] - 2026-11-06
 
 First release of the desktop client, for Linux with GNOME on Wayland

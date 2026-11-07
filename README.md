@@ -14,7 +14,7 @@ the desktop client: take a screenshot (Snap), select the relevant area (Crop),
 blur sensitive details (Redact) and add arrows or highlights (Note). The finished
 image is uploaded to your own server and can be shared through a short link.
 
-> **Status:** server 0.4.0, desktop client 0.1.0 for Linux (GNOME on
+> **Status:** server 0.4.0, desktop client 0.1.1 for Linux (GNOME on
 > Wayland). Windows, more Linux desktops and macOS follow (see
 > [docs/PLAN.md](docs/PLAN.md)).
 
@@ -80,9 +80,15 @@ cargo tauri build --bundles deb,appimage
 
 Notes from building and testing on GNOME/Wayland:
 
-- The screenshot comes from the xdg-desktop-portal. GNOME asks for the
-  permission once and flashes the screen on every capture; the flash
-  cannot be turned off from the app.
+- The screenshot comes from the xdg-desktop-portal. GNOME flashes the
+  screen on every capture; the flash cannot be turned off from the app.
+- Started from the menu, the client runs as the app `SCRN`, and GNOME only
+  allows screenshots without a dialog once that is stored in the portal's
+  permission store. GNOME's own question needs a parent window, which a
+  tray app lacks, so the portal just refuses. The client then opens its
+  own window and, after *Allow*, stores the permission for `SCRN` itself
+  (once per user). Started from a terminal, it has no app ID and needs no
+  permission.
 - Wayland ignores window positions, so every monitor gets its own
   overlay, put fullscreen on that monitor through GTK.
 - A tray app has no focused window, and Wayland only lets focused clients
