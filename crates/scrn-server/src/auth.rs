@@ -12,13 +12,16 @@ use crate::cookies::{self, CookieSpec, SameSite};
 use crate::crypto::{self, SecretToken};
 use crate::error::AppError;
 use crate::repo::users::{Role, User};
-use crate::repo::{Sha256, sessions, users};
+use crate::repo::{Sha256, password_resets, sessions, users};
 
 /// Sessions expire after this many seconds without activity.
 pub const SESSION_TTL: i64 = 14 * 24 * 60 * 60;
 /// Activity is written to the database at most this often per session.
 const SESSION_TOUCH_INTERVAL: i64 = 5 * 60;
 
+/// How long a passkey confirmation replaces the current password when a
+/// new one is set.
+pub const PASSKEY_CONFIRM_WINDOW: i64 = 10 * 60;
 pub const MIN_PASSWORD_CHARS: usize = 12;
 /// Upper bound that keeps argon2 work per request predictable.
 pub const MAX_PASSWORD_CHARS: usize = 1024;
@@ -93,6 +96,42 @@ pub async fn verify_password(password: String, phc: String) -> Result<bool, AppE
     Ok(tokio::task::spawn_blocking(move || crypto::verify_password(&password, &phc)).await?)
 }
 
+// --- Password reset links ---------------------------------------------------
+
+/// How long a password reset link works.
+pub const RESET_LINK_TTL: i64 = 24 * 60 * 60;
+
+/// Creates a password reset link for `user_id` and returns its URL. Any
+/// older link of that user stops working. `created_by` is the admin, or
+/// `None` on the command line. The URL contains the only copy of the token.
+pub async fn issue_reset_link(
+    db: &sqlx::SqlitePool,
+    base_url: &str,
+    user_id: i64,
+    created_by: Option<i64>,
+    now: i64,
+) -> Result<String, AppError> {
+    let token = SecretToken::generate()?;
+    let mut tx = db.begin().await?;
+    let reset = password_resets::replace(
+        &mut tx,
+        &token.hash,
+        user_id,
+        created_by,
+        now,
+        now + RESET_LINK_TTL,
+    )
+    .await?;
+    tx.commit().await?;
+    tracing::info!(
+        reset_id = reset.id,
+        user_id,
+        created_by = ?created_by,
+        "password reset link created"
+    );
+    Ok(format!("{base_url}/reset/{}", token.token))
+}
+
 // --- Sessions ---------------------------------------------------------------
 
 fn session_cookie(state: &AppState) -> (String, bool) {
@@ -100,11 +139,31 @@ fn session_cookie(state: &AppState) -> (String, bool) {
     (cookies::name(SESSION_COOKIE, secure), secure)
 }
 
+/// How a session was started.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SignIn {
+    Password,
+    Passkey,
+}
+
 /// Creates a session for `user_id` and returns the `Set-Cookie` header.
-pub async fn start_session(state: &AppState, user_id: i64) -> Result<HeaderValue, AppError> {
+pub async fn start_session(
+    state: &AppState,
+    user_id: i64,
+    via: SignIn,
+) -> Result<HeaderValue, AppError> {
     let now = state.clock.now();
     let token = SecretToken::generate()?;
-    sessions::create(&state.db, &token.hash, user_id, now, now + SESSION_TTL).await?;
+    let passkey_at = (via == SignIn::Passkey).then_some(now);
+    sessions::create(
+        &state.db,
+        &token.hash,
+        user_id,
+        now,
+        now + SESSION_TTL,
+        passkey_at,
+    )
+    .await?;
     let (name, secure) = session_cookie(state);
     CookieSpec {
         name: &name,
@@ -136,11 +195,20 @@ pub struct CurrentUser {
     pub session_hash: Sha256,
     /// CSRF token for forms of this session.
     pub csrf: String,
+    /// Last passkey confirmation within this session.
+    pub passkey_at: Option<i64>,
 }
 
 impl CurrentUser {
     pub fn is_admin(&self) -> bool {
         self.user.role == Role::Admin
+    }
+
+    /// True if the user confirmed with a passkey within
+    /// [`PASSKEY_CONFIRM_WINDOW`] before `now`.
+    pub fn passkey_confirmed(&self, now: i64) -> bool {
+        self.passkey_at
+            .is_some_and(|at| at <= now && now - at < PASSKEY_CONFIRM_WINDOW)
     }
 
     /// Checks the CSRF token of a submitted form.
@@ -190,6 +258,7 @@ async fn load_current_user(
         user,
         session_hash: hash,
         csrf: session_csrf(token),
+        passkey_at: session.passkey_at,
     }))
 }
 

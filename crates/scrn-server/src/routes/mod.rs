@@ -9,6 +9,7 @@ mod login;
 mod passkeys;
 mod prefs;
 mod public;
+mod reset;
 mod settings;
 mod setup;
 
@@ -43,6 +44,7 @@ pub fn router(state: AppState) -> Router {
             "/app/tokens",
             get(settings::tokens_redirect).post(settings::create_token),
         )
+        .route("/app/settings/password", post(settings::change_password))
         .route("/app/tokens/{id}/revoke", post(settings::revoke_token))
         .route("/prefs", post(prefs::switch))
         .route("/login/passkey/start", post(passkeys::login_start))
@@ -55,6 +57,11 @@ pub fn router(state: AppState) -> Router {
             "/app/passkeys/register/finish",
             post(passkeys::register_finish),
         )
+        .route("/app/passkeys/confirm/start", post(passkeys::confirm_start))
+        .route(
+            "/app/passkeys/confirm/finish",
+            post(passkeys::confirm_finish),
+        )
         .route("/app/passkeys/{id}/rename", post(passkeys::rename))
         .route("/app/passkeys/{id}/delete", post(passkeys::delete))
         .route("/static/{file}", get(crate::html::serve_static))
@@ -63,6 +70,7 @@ pub fn router(state: AppState) -> Router {
         .route("/login", get(login::show).post(login::submit))
         .route("/logout", post(login::logout))
         .route("/invite/{token}", get(invite::show).post(invite::submit))
+        .route("/reset/{token}", get(reset::show).post(reset::submit))
         .route("/admin", get(admin::show))
         .route("/admin/backup", post(admin::download_backup))
         .route("/admin/invites", post(admin::create_invite))
@@ -70,6 +78,7 @@ pub fn router(state: AppState) -> Router {
         .route("/admin/users/{id}/disable", post(admin::disable_user))
         .route("/admin/users/{id}/enable", post(admin::enable_user))
         .route("/admin/users/{id}/quota", post(admin::set_quota))
+        .route("/admin/users/{id}/reset", post(admin::create_reset_link))
         // Fixed routes always win over this capture in axum's router.
         .route("/{name}", get(public::show))
         .nest(scrn_proto::API_PREFIX, crate::api::router(state.clone()))
@@ -88,6 +97,17 @@ pub fn router(state: AppState) -> Router {
 
 async fn not_found() -> AppError {
     AppError::NotFound
+}
+
+/// Where a new account goes first: the passkey section of the settings,
+/// with a hint to add one, if this server supports passkeys, else
+/// `otherwise`.
+fn after_sign_up(state: &AppState, otherwise: &'static str) -> &'static str {
+    if state.passkeys.is_some() {
+        "/app/settings?welcome=1#passkeys"
+    } else {
+        otherwise
+    }
 }
 
 /// Adds a `Set-Cookie` header if one is given.

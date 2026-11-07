@@ -76,7 +76,7 @@ async fn setup_flow_creates_admin_once() {
             ],
         )
         .await;
-    response.assert_redirect("/admin");
+    response.assert_redirect("/app/settings?welcome=1#passkeys");
     let admin = users::get_by_username(&server.state.db, "admin")
         .await
         .unwrap()
@@ -371,7 +371,7 @@ async fn invitation_is_single_use() {
             ],
         )
         .await;
-    response.assert_redirect("/app");
+    response.assert_redirect("/app/settings?welcome=1#passkeys");
     assert!(newcomer.get("/app").await.body.contains("dave"));
     let dave = users::get_by_username(&server.state.db, "dave")
         .await

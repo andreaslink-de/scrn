@@ -43,8 +43,47 @@
 {% include "usage.html" %}
 </section>
 
+<section class="card" id="password" aria-labelledby="password-title">
+<h2 id="password-title">{{ page.t("password.title") }}</h2>
+{% if let Some(key) = password_notice %}<p class="notice" role="status">{{ page.t(key) }}</p>{% endif %}
+{% if let Some(error) = password_error %}<p class="alert" role="alert">{{ error }}</p>{% endif %}
+<p class="muted">{% if has_password %}{{ page.t("password.intro") }}{% else %}{{ page.t("password.intro_none") }}{% endif %}</p>
+<form method="post" action="/app/settings/password">
+<input type="hidden" name="csrf" value="{{ csrf }}">
+<div class="field">
+<label for="password-username">{{ page.t("field.username") }}</label>
+<input id="password-username" name="username" type="text" class="short" value="{{ username }}" autocomplete="username" readonly>
+</div>
+{% if has_password && !passkey_confirmed %}
+<div class="field">
+<label for="current_password">{{ page.t("password.current") }}</label>
+<input id="current_password" name="current_password" type="password" autocomplete="current-password" required>
+{% if passkeys_enabled && !passkeys.is_empty() %}<small class="hint">{{ page.t("password.forgot_hint") }}</small>{% endif %}
+</div>
+{% endif %}
+<div class="field">
+<label for="new_password">{{ page.t("password.new") }}</label>
+<input id="new_password" name="password" type="password" autocomplete="new-password" minlength="{{ min_password }}" required aria-describedby="new-password-hint">
+<small id="new-password-hint" class="hint">{{ page.tf("field.password_hint", "min", min_password.to_string().as_str()) }}</small>
+</div>
+<div class="field">
+<label for="new_password_confirm">{{ page.t("field.password_confirm") }}</label>
+<input id="new_password_confirm" name="password_confirm" type="password" autocomplete="new-password" minlength="{{ min_password }}" required>
+</div>
+<button type="submit">{{ page.t("password.save") }}</button>
+</form>
+{% if has_password && !passkey_confirmed && passkeys_enabled && !passkeys.is_empty() %}
+<div class="passkey-confirm" data-passkey-confirm data-csrf="{{ csrf }}" data-unsupported="{{ page.t("passkey.unsupported") }}" data-cancelled="{{ page.t("passkey.cancelled") }}">
+<p class="divider"><span>{{ page.t("login.or") }}</span></p>
+<button type="button" class="secondary" data-passkey-confirm-button>{{ page.t("password.confirm_passkey") }}</button>
+<p class="alert" role="alert" data-passkey-message hidden></p>
+</div>
+{% endif %}
+</section>
+
 <section class="card" id="passkeys" aria-labelledby="passkeys-title">
 <h2 id="passkeys-title">{{ page.t("passkey.title") }}</h2>
+{% if welcome && passkeys_enabled && passkeys.is_empty() %}<p class="notice" role="status">{{ page.t("passkey.welcome") }}</p>{% endif %}
 {% if passkey_added %}<p class="notice" role="status">{{ page.t("passkey.added") }}</p>{% endif %}
 {% if let Some(error) = passkey_error %}<p class="alert" role="alert">{{ error }}</p>{% endif %}
 {% if passkeys_enabled %}

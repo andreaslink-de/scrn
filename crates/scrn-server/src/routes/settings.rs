@@ -1,5 +1,5 @@
-//! The settings page: language, theme, default link expiry, storage usage
-//! and API tokens.
+//! The settings page: language, theme, default link expiry, storage usage,
+//! password, passkeys and API tokens.
 
 use askama::Template;
 use axum::Form;
@@ -10,7 +10,7 @@ use axum::response::{IntoResponse, Redirect, Response};
 use serde::Deserialize;
 
 use crate::AppState;
-use crate::auth::CurrentUser;
+use crate::auth::{self, CurrentUser, MIN_PASSWORD_CHARS};
 use crate::crypto::ApiTokenSecret;
 use crate::error::AppError;
 use crate::html::{self, Page, Usage};
@@ -18,7 +18,7 @@ use crate::i18n;
 use crate::prefs::{self, Prefs};
 use crate::repo::api_tokens::{self, ApiToken};
 use crate::repo::passkeys::{self, Passkey};
-use crate::repo::{screenshots, users};
+use crate::repo::{screenshots, sessions, users};
 
 /// Token names: 1 to 100 characters, matching the database constraint.
 pub const MAX_TOKEN_NAME_CHARS: usize = 100;
@@ -45,12 +45,33 @@ struct SettingsPage {
     passkeys: Vec<Passkey>,
     passkey_added: bool,
     passkey_error: Option<String>,
+    /// First visit after the account was created: suggest a passkey.
+    welcome: bool,
+    username: String,
+    has_password: bool,
+    /// The current password is not needed: a fresh passkey confirmation.
+    passkey_confirmed: bool,
+    password_notice: Option<&'static str>,
+    password_error: Option<String>,
+    min_password: usize,
 }
 
 #[derive(Deserialize)]
 pub struct ShowQuery {
     saved: Option<String>,
     passkey: Option<String>,
+    welcome: Option<String>,
+    password: Option<String>,
+    confirmed: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct PasswordForm {
+    csrf: String,
+    #[serde(default)]
+    current_password: String,
+    password: String,
+    password_confirm: String,
 }
 
 #[derive(Deserialize)]
@@ -85,6 +106,9 @@ struct Extra {
     token_name: String,
     passkey_added: bool,
     passkey_error: Option<String>,
+    welcome: bool,
+    password_notice: Option<&'static str>,
+    password_error: Option<String>,
 }
 
 pub async fn show(
@@ -95,6 +119,14 @@ pub async fn show(
     let extra = Extra {
         saved: query.saved.is_some(),
         passkey_added: query.passkey.as_deref() == Some("added"),
+        welcome: query.welcome.is_some(),
+        password_notice: if query.password.as_deref() == Some("changed") {
+            Some("password.changed")
+        } else if query.confirmed.is_some() {
+            Some("password.confirmed")
+        } else {
+            None
+        },
         ..Extra::default()
     };
     render(&state, &user, extra, StatusCode::OK).await
@@ -129,6 +161,64 @@ pub async fn save(
         response.headers_mut().append(SET_COOKIE, cookie);
     }
     Ok(response)
+}
+
+/// Sets a new password. Accounts with a password need the current one,
+/// unless the user confirmed with a passkey a few minutes ago. All other
+/// sessions of the account end.
+pub async fn change_password(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    Form(form): Form<PasswordForm>,
+) -> Result<Response, AppError> {
+    user.verify_csrf(&form.csrf)?;
+    let lang = user.user.language;
+    let now = state.clock.now();
+    let fail = |key: &str, status| {
+        let extra = Extra {
+            password_error: Some(i18n::catalogs().t(lang, key).to_owned()),
+            ..Extra::default()
+        };
+        render(&state, &user, extra, status)
+    };
+
+    if let Some(current_hash) = user.user.password_hash.clone()
+        && !user.passkey_confirmed(now)
+    {
+        // Guessing the current password from a stolen session costs the
+        // same budget as guessing it on the login page.
+        let user_key = user.user.username.to_lowercase();
+        if state.login_user_limiter.is_limited(&user_key, now) {
+            return fail("error.too_many_attempts", StatusCode::TOO_MANY_REQUESTS).await;
+        }
+        let ok = form.current_password.chars().count() <= auth::MAX_PASSWORD_CHARS
+            && auth::verify_password(form.current_password, current_hash).await?;
+        if !ok {
+            state.login_user_limiter.record(&user_key, now);
+            return fail("error.current_password", StatusCode::UNPROCESSABLE_ENTITY).await;
+        }
+    }
+    if let Err(err) = auth::validate_new_password(&form.password, &form.password_confirm) {
+        let extra = Extra {
+            password_error: Some(err.message(lang)),
+            ..Extra::default()
+        };
+        return render(&state, &user, extra, StatusCode::UNPROCESSABLE_ENTITY).await;
+    }
+    let hash = auth::hash_password(form.password).await?;
+    let mut tx = state.db.begin().await?;
+    if !users::set_password_hash(&mut *tx, user.user.id, &hash).await? {
+        return Err(AppError::LoginRequired);
+    }
+    let ended =
+        sessions::delete_others_for_user(&mut *tx, user.user.id, &user.session_hash).await?;
+    tx.commit().await?;
+    tracing::info!(
+        user_id = user.user.id,
+        other_sessions_ended = ended,
+        "password changed"
+    );
+    Ok(Redirect::to("/app/settings?password=changed#password").into_response())
 }
 
 /// Parses the expiry choice. `Ok(None)` means an invalid custom value.
@@ -272,6 +362,13 @@ async fn render(
             passkeys: passkey_rows,
             passkey_added: extra.passkey_added,
             passkey_error: extra.passkey_error,
+            welcome: extra.welcome,
+            username: user.user.username.clone(),
+            has_password: user.user.password_hash.is_some(),
+            passkey_confirmed: user.passkey_confirmed(state.clock.now()),
+            password_notice: extra.password_notice,
+            password_error: extra.password_error,
+            min_password: MIN_PASSWORD_CHARS,
         },
     )
 }

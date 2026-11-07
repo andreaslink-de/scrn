@@ -107,8 +107,12 @@ pub async fn submit(
     state.clear_setup_token();
     tracing::info!(username = %admin.username, "admin account created, setup is locked");
 
-    let cookie = auth::start_session(&state, admin.id).await?;
-    Ok(([(SET_COOKIE, cookie)], Redirect::to("/admin")).into_response())
+    let cookie = auth::start_session(&state, admin.id, auth::SignIn::Password).await?;
+    Ok((
+        [(SET_COOKIE, cookie)],
+        Redirect::to(super::after_sign_up(&state, "/admin")),
+    )
+        .into_response())
 }
 
 fn render(

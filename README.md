@@ -125,11 +125,35 @@ docker compose logs scrn | grep setup_token
 Open `<SCRN_BASE_URL>/setup`, enter the token and create the administrator
 account (password at least 12 characters). The setup page is locked
 afterwards. A restart before the setup is finished prints a new token.
+Right after the setup, the settings page suggests adding a passkey, so the
+administrator has a second way to sign in.
 
 New users can only register through an invitation link: create one on the
 administration page (`/admin`), it is single-use and expires after the chosen
 number of days. Administrators can disable accounts, which also ends their
 sessions.
+
+### Passwords and reset links
+
+Users change their password under *Settings → Password*. They need the
+current password, or a passkey instead: right after signing in with a
+passkey, or after *Confirm with passkey* on that page, the current password
+is not asked for 10 minutes. Changing the password signs out all other
+sessions of the account; API tokens keep working.
+
+Administrators create a *Reset link* for another user on `/admin`. The link
+is shown once, works once within 24 hours, and a newer link replaces an
+older one. Setting a password through it signs out all sessions of that
+account.
+
+An administrator who can no longer sign in gets a reset link on the
+command line of the server:
+
+```sh
+docker compose exec scrn scrn-server reset-link <username>
+```
+
+It prints `<SCRN_BASE_URL>/reset/…`; open it and choose a new password.
 
 ### Web interface
 

@@ -215,6 +215,31 @@ document.addEventListener("click", async (event) => {
   }
 });
 
+// Settings: confirm with a passkey instead of the current password.
+document.addEventListener("click", async (event) => {
+  const button = event.target.closest("button[data-passkey-confirm-button]");
+  if (!button) {
+    return;
+  }
+  const box = button.closest("[data-passkey-confirm]");
+  if (!supported()) {
+    showMessage(box, box.dataset.unsupported);
+    return;
+  }
+  const csrf = box.dataset.csrf;
+  try {
+    const start = await postJson("/app/passkeys/confirm/start", csrf, {});
+    const credential = await navigator.credentials.get({ publicKey: requestOptions(start.options.publicKey) });
+    const done = await postJson("/app/passkeys/confirm/finish", csrf, {
+      ceremony: start.ceremony,
+      credential: credentialJson(credential),
+    });
+    window.location.assign(done.redirect);
+  } catch (error) {
+    showMessage(box, error.name === "NotAllowedError" ? box.dataset.cancelled : error.message);
+  }
+});
+
 // --- Local time -------------------------------------------------------------
 //
 // The server renders times in UTC inside <time datetime="…Z">. They are

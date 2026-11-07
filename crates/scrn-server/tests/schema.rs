@@ -34,6 +34,7 @@ async fn startup_creates_all_tables() {
             "api_tokens",
             "invites",
             "passkeys",
+            "password_resets",
             "screenshots",
             "sessions",
             "users"

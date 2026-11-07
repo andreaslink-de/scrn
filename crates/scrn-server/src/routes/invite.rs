@@ -159,8 +159,12 @@ pub async fn submit(
         "user registered via invitation"
     );
 
-    let cookie = auth::start_session(&state, user.id).await?;
-    Ok(([(SET_COOKIE, cookie)], Redirect::to("/app")).into_response())
+    let cookie = auth::start_session(&state, user.id, auth::SignIn::Password).await?;
+    Ok((
+        [(SET_COOKIE, cookie)],
+        Redirect::to(super::after_sign_up(&state, "/app")),
+    )
+        .into_response())
 }
 
 fn render(

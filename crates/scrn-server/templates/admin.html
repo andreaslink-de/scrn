@@ -6,6 +6,12 @@
 <input id="invite-link" type="text" readonly value="{{ link }}">
 </div>
 {% endif %}
+{% if let Some((label, link)) = reset_link %}
+<div class="notice" role="status">
+<label for="reset-link">{{ label }}</label>
+<input id="reset-link" type="text" readonly value="{{ link }}">
+</div>
+{% endif %}
 {% if let Some(error) = error %}<p class="alert" role="alert">{{ error }}</p>{% endif %}
 
 <section class="card" aria-labelledby="users-title">
@@ -32,10 +38,16 @@
 </form>
 </td>
 <td data-label="{{ page.t("admin.col.actions") }}">{% if !user.is_self %}
+<div class="actions">
+<form method="post" action="/admin/users/{{ user.id }}/reset">
+<input type="hidden" name="csrf" value="{{ csrf }}">
+<button type="submit" class="secondary small">{{ page.t("admin.reset.create") }}</button>
+</form>
 <form method="post" action="/admin/users/{{ user.id }}/{% if user.disabled %}enable{% else %}disable{% endif %}">
 <input type="hidden" name="csrf" value="{{ csrf }}">
 <button type="submit" class="{% if user.disabled %}secondary{% else %}danger{% endif %} small">{% if user.disabled %}{{ page.t("admin.enable") }}{% else %}{{ page.t("admin.disable") }}{% endif %}</button>
 </form>
+</div>
 {% endif %}</td>
 </tr>
 {% endfor %}
