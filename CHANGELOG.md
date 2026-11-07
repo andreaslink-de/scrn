@@ -6,6 +6,8 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-07
+
 ### Added
 
 - Change the password under *Settings → Password*. Instead of the current
@@ -104,6 +106,8 @@ First release of the SCRN server.
 - Consistent backups while the server keeps running: a download in the
   administration, `scripts/backup.sh` and `scrn-server backup`.
 
-[Unreleased]: https://github.com/andreaslink-de/scrn/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/andreaslink-de/scrn/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/andreaslink-de/scrn/compare/v0.3.0...v0.4.0
+[0.3.0]: https://github.com/andreaslink-de/scrn/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/andreaslink-de/scrn/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/andreaslink-de/scrn/releases/tag/v0.1.0

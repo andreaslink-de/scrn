@@ -14,7 +14,7 @@ the desktop client: take a screenshot (Snap), select the relevant area (Crop),
 blur sensitive details (Redact) and add arrows or highlights (Note). The finished
 image is uploaded to your own server and can be shared through a short link.
 
-> **Status:** server 0.3.0, desktop client 0.1.0 for Linux (GNOME on
+> **Status:** server 0.4.0, desktop client 0.1.0 for Linux (GNOME on
 > Wayland). Windows, more Linux desktops and macOS follow (see
 > [docs/PLAN.md](docs/PLAN.md)).
 
@@ -304,7 +304,7 @@ any other proxy works the same way.
 
 2. Choose the image. Releases are published as
    `ghcr.io/andreaslink-de/scrn:<version>` (and `latest`); set
-   `SCRN_IMAGE=ghcr.io/andreaslink-de/scrn:0.3.0` in `.env` to use one.
+   `SCRN_IMAGE=ghcr.io/andreaslink-de/scrn:0.4.0` in `.env` to use one.
    Without `SCRN_IMAGE`, Compose builds the image from the checkout.
 
 3. Start it: `mkdir -p data && docker compose pull && docker compose up -d`
