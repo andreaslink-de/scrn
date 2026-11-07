@@ -190,7 +190,7 @@ async fn admin_reset_link_sets_a_new_password_once() {
         .await
         .assert_redirect("/login?reset=1");
     let login = browser.get("/login?reset=1").await;
-    assert!(login.body.contains("Dein neues Passwort ist gespeichert."));
+    assert!(login.body.contains("Your new password is saved."));
 
     // All of Bob's sessions ended; only the new password works.
     bob_device.get("/app").await.assert_redirect("/login");

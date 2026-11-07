@@ -71,7 +71,7 @@ async fn every_response_carries_security_headers() {
     assert_eq!(page.headers["x-frame-options"], "DENY");
     assert_eq!(page.headers["cross-origin-opener-policy"], "same-origin");
     assert!(!page.body.contains("<script>"));
-    assert!(!page.body.contains(" on"));
+    assert!(!has_inline_handler(&page.body));
 }
 
 #[tokio::test]
@@ -383,4 +383,12 @@ async fn registration_attempts_share_the_login_budget() {
         .await;
     assert_eq!(response.status, StatusCode::TOO_MANY_REQUESTS);
     assert!(response.headers.contains_key("retry-after"));
+}
+
+/// Whether the page has an inline event handler such as `onclick="…"`.
+fn has_inline_handler(body: &str) -> bool {
+    body.split(" on").skip(1).any(|rest| {
+        let name = rest.bytes().take_while(u8::is_ascii_lowercase).count();
+        name > 0 && rest[name..].starts_with('=')
+    })
 }

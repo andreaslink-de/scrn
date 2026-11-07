@@ -15,7 +15,7 @@ const DE: &str = include_str!("../locales/de.txt");
 const EN: &str = include_str!("../locales/en.txt");
 
 /// The default UI language.
-pub const DEFAULT_LANGUAGE: Language = Language::De;
+pub const DEFAULT_LANGUAGE: Language = Language::En;
 
 static CATALOGS: LazyLock<I18n> = LazyLock::new(|| {
     // `init_state` calls `I18n::load` at startup and refuses to start on

@@ -26,6 +26,13 @@ project uses [Semantic Versioning](https://semver.org/).
   password managers no longer offer to store the token as the admin
   password.
 - `reset` is a reserved short ID prefix.
+- English is the default language when neither the account, a cookie nor
+  the browser asks for one. Existing accounts keep their setting.
+- The custom days field in the settings and the date field on a
+  screenshot only show while the custom option is chosen.
+- Short links in the gallery are no longer underlined; the account name
+  in the header and the version in the footer stand apart from the
+  links and the description next to them.
 
 ## [0.3.0] - 2026-11-06
 

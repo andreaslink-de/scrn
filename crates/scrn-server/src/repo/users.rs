@@ -84,14 +84,15 @@ pub async fn create(
     now: i64,
 ) -> Result<User, RepoError> {
     let sql = concat!(
-        "INSERT INTO users (username, password_hash, role, created_at) \
-         VALUES (?, ?, ?, ?) RETURNING ",
+        "INSERT INTO users (username, password_hash, role, language, created_at) \
+         VALUES (?, ?, ?, ?, ?) RETURNING ",
         columns!()
     );
     let user = sqlx::query_as(sql)
         .bind(new.username)
         .bind(new.password_hash)
         .bind(new.role)
+        .bind(crate::i18n::DEFAULT_LANGUAGE)
         .bind(now)
         .fetch_one(db)
         .await?;
@@ -108,14 +109,15 @@ pub async fn create_first_admin(
     now: i64,
 ) -> Result<Option<User>, RepoError> {
     let sql = concat!(
-        "INSERT INTO users (username, password_hash, role, created_at) ",
-        "SELECT ?, ?, 'admin', ? WHERE NOT EXISTS (SELECT 1 FROM users) ",
+        "INSERT INTO users (username, password_hash, role, language, created_at) ",
+        "SELECT ?, ?, 'admin', ?, ? WHERE NOT EXISTS (SELECT 1 FROM users) ",
         "RETURNING ",
         columns!()
     );
     Ok(sqlx::query_as(sql)
         .bind(username)
         .bind(password_hash)
+        .bind(crate::i18n::DEFAULT_LANGUAGE)
         .bind(now)
         .fetch_optional(db)
         .await?)
@@ -251,14 +253,14 @@ mod tests {
     async fn preferences_are_stored() {
         let (_dir, pool) = test_util::pool().await;
         let user = test_util::user(&pool, "alice").await;
-        assert_eq!((user.language, user.theme), (Language::De, Theme::Dark));
+        assert_eq!((user.language, user.theme), (Language::En, Theme::Dark));
         assert!(
-            set_preferences(&pool, user.id, Language::En, Theme::Light, 7)
+            set_preferences(&pool, user.id, Language::De, Theme::Light, 7)
                 .await
                 .unwrap()
         );
         let user = get_by_id(&pool, user.id).await.unwrap().unwrap();
-        assert_eq!((user.language, user.theme), (Language::En, Theme::Light));
+        assert_eq!((user.language, user.theme), (Language::De, Theme::Light));
         assert_eq!(user.default_expiry_days, 7);
         assert!(matches!(
             set_preferences(&pool, user.id, Language::En, Theme::Light, -1).await,
@@ -306,7 +308,7 @@ mod tests {
 
         assert_eq!(created.username, "Alice");
         assert_eq!(created.role, Role::Admin);
-        assert_eq!(created.language, Language::De);
+        assert_eq!(created.language, Language::En);
         assert_eq!(created.theme, Theme::Dark);
         assert_eq!(created.default_expiry_days, 0);
         assert_eq!(created.quota_bytes, None);

@@ -163,7 +163,7 @@ button. The detail view switches the visibility (making an image private
 deletes its short link for good; making it public again creates a new one),
 changes the expiry of a public link and deletes the screenshot.
 
-The web UI speaks German (default) and English and has a dark (default) and a
+The web UI speaks English (default) and German and has a dark (default) and a
 light theme. Logged-in users choose both, plus the default expiry of public
 links, under *Settings* (`/app/settings`); the page also shows the storage
 usage and manages API tokens. Logged-out pages follow the browser language

@@ -14,7 +14,7 @@ use axum::http::header::{CONTENT_TYPE, COOKIE, LOCATION, SET_COOKIE};
 use axum::http::{HeaderMap, Request, StatusCode};
 use http_body_util::BodyExt;
 use scrn_server::clock::ManualClock;
-use scrn_server::repo::users::{self, NewUser, Role, User};
+use scrn_server::repo::users::{self, Language, NewUser, Role, Theme, User};
 use scrn_server::{AppState, Config, app, crypto, init_state_with_clock};
 use tempfile::TempDir;
 use tower::ServiceExt;
@@ -66,10 +66,11 @@ impl TestServer {
         }
     }
 
-    /// Creates a user directly in the database.
+    /// Creates a user directly in the database. The account uses German,
+    /// so the tests can check the German texts of logged-in pages.
     pub async fn create_user(&self, name: &str, role: Role) -> User {
         let hash = crypto::hash_password(PASSWORD).unwrap();
-        users::create(
+        let user = users::create(
             &self.state.db,
             &NewUser {
                 username: name,
@@ -79,7 +80,14 @@ impl TestServer {
             START,
         )
         .await
-        .unwrap()
+        .unwrap();
+        users::set_preferences(&self.state.db, user.id, Language::De, Theme::Dark, 0)
+            .await
+            .unwrap();
+        users::get_by_id(&self.state.db, user.id)
+            .await
+            .unwrap()
+            .unwrap()
     }
 }
 
