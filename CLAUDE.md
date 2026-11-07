@@ -5,7 +5,7 @@ SCRN stands for Snap · Crop · Redact · Note, the workflow of the client. Self
 ## Language rules
 
 - All code comments, identifiers, commit messages, docs, log messages and API error messages are written in English.
-- The web UI is bilingual (German is the default, English is the second language). UI strings live in translation catalogs under `crates/scrn-server/locales`, never hard-coded in templates.
+- The web UI is bilingual (English is the default, German is the second language). UI strings live in translation catalogs under `crates/scrn-server/locales`, never hard-coded in templates.
 
 ## Layout
 

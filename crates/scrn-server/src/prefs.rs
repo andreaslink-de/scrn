@@ -1,7 +1,7 @@
 //! Language and theme of a request.
 //!
 //! Resolution order for the language: the user's setting, then the
-//! `scrn_lang` cookie, then `Accept-Language`, then German. The theme comes
+//! `scrn_lang` cookie, then `Accept-Language`, then English. The theme comes
 //! from the user's setting, then the `scrn_theme` cookie, then dark. The
 //! cookies are set on logged-out pages through the footer switch and on
 //! login and settings changes, so error pages, which are rendered without a
@@ -206,21 +206,24 @@ mod tests {
     #[test]
     fn resolution_order_for_logged_out_requests() {
         assert_eq!(Prefs::from_headers(&HeaderMap::new()), Prefs::default());
-        assert_eq!(Prefs::default().lang, Language::De);
+        assert_eq!(Prefs::default().lang, Language::En);
         assert_eq!(Prefs::default().theme, Theme::Dark);
 
-        let h = headers(&[("accept-language", "en")]);
+        let h = headers(&[("accept-language", "de-DE")]);
+        assert_eq!(Prefs::from_headers(&h).lang, Language::De);
+        // Unsupported languages fall back to English.
+        let h = headers(&[("accept-language", "fr")]);
         assert_eq!(Prefs::from_headers(&h).lang, Language::En);
 
         // The cookie wins over Accept-Language.
         let h = headers(&[
-            ("accept-language", "en"),
-            ("cookie", "scrn_lang=de; scrn_theme=light"),
+            ("accept-language", "de"),
+            ("cookie", "scrn_lang=en; scrn_theme=light"),
         ]);
         assert_eq!(
             Prefs::from_headers(&h),
             Prefs {
-                lang: Language::De,
+                lang: Language::En,
                 theme: Theme::Light
             }
         );

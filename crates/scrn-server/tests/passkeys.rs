@@ -847,7 +847,7 @@ async fn new_admin_is_asked_for_a_passkey() {
         .await
         .assert_redirect("/app/settings?welcome=1#passkeys");
     let page = browser.get("/app/settings?welcome=1").await;
-    assert!(page.body.contains("Lege jetzt einen Passkey an."));
+    assert!(page.body.contains("Add a passkey now"));
     let key = SoftKey::new(1);
     let csrf = page.csrf();
     let done = register(&mut browser, &csrf, &key, "Laptop").await;

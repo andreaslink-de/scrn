@@ -54,7 +54,7 @@
 <option value="custom"{% if expiry == "custom" %} selected{% endif %}>{{ page.t("expiry.date") }}</option>
 </select>
 </div>
-<div class="field">
+<div class="field expiry-custom">
 <label for="custom_date">{{ page.t("shot.expiry_date") }}</label>
 <input id="custom_date" name="custom_date" type="date" class="short" min="{{ min_date }}" max="{{ max_date }}" value="{{ custom_date }}"{% if let Some(at) = expires_at %} data-expires-at="{{ at }}"{% endif %} aria-describedby="date-hint">
 <input type="hidden" name="custom_end" value="">

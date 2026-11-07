@@ -193,6 +193,7 @@ admin.backup.download = Backup herunterladen
 error.backup_running = Es läuft bereits ein Backup-Download. Bitte warte, bis er fertig ist.
 shot.views = Aufrufe
 footer.source = Quellcode auf GitHub
+footer.version = Version
 
 password.title = Passwort
 password.intro = Ändere hier dein Passwort. Andere angemeldete Geräte werden danach abgemeldet.
