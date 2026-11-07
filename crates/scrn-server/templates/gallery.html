@@ -1,10 +1,11 @@
 {% extends "base.html" %}
 {% block content %}
 <nav class="filters" aria-label="{{ page.t("gallery.filter") }}">
-<a href="/app"{% if filter == "all" %} aria-current="page"{% endif %}>{{ page.t("gallery.all") }}</a>
-<a href="/app?filter=public"{% if filter == "public" %} aria-current="page"{% endif %}>{{ page.t("gallery.public") }}</a>
-<a href="/app?filter=private"{% if filter == "private" %} aria-current="page"{% endif %}>{{ page.t("gallery.private") }}</a>
-</nav>
+{% for link in visibility_links %}<a href="{{ link.href }}"{% if link.current %} aria-current="page"{% endif %}>{{ link.label }}</a>
+{% endfor %}</nav>
+{% if !group_links.is_empty() %}<nav class="filters" aria-label="{{ page.t("gallery.group_filter") }}">
+{% for link in group_links %}<a href="{{ link.href }}"{% if link.current %} aria-current="page"{% endif %}>{{ link.label }}</a>
+{% endfor %}</nav>{% endif %}
 {% if cards.is_empty() %}
 <div class="card"><p>{{ page.t("gallery.empty") }}</p></div>
 {% else %}

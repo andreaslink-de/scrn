@@ -6,6 +6,7 @@
 //! deterministic.
 
 pub mod api_tokens;
+pub mod device_groups;
 pub mod invites;
 pub mod passkeys;
 pub mod password_resets;

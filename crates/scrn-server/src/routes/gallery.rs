@@ -19,7 +19,8 @@ use crate::error::AppError;
 use crate::html::{self, Page};
 use crate::i18n;
 use crate::image;
-use crate::repo::screenshots::{self, Screenshot, Visibility};
+use crate::repo::device_groups::{self, DeviceGroup};
+use crate::repo::screenshots::{self, GroupFilter, Screenshot, Visibility};
 use crate::{AppState, shots, storage};
 
 /// Screenshots per gallery page.
@@ -117,11 +118,38 @@ fn short_url(state: &AppState, shot: &Screenshot) -> Option<String> {
         .map(|link| format!("{}/{}", state.config.base_url, link.short_id))
 }
 
+/// A link of a filter bar.
+struct FilterLink {
+    label: String,
+    href: String,
+    current: bool,
+}
+
+/// The gallery URL for a visibility filter and an optional device group.
+fn gallery_href(filter: Filter, group: Option<i64>) -> String {
+    match (filter, group) {
+        (Filter::All, None) => "/app".to_owned(),
+        (Filter::All, Some(id)) => format!("/app?group={id}"),
+        (_, None) => format!("/app?filter={}", filter.code()),
+        (_, Some(id)) => format!("/app?filter={}&group={id}", filter.code()),
+    }
+}
+
+/// The name of a group as shown in the UI.
+pub fn group_name(group: &DeviceGroup, lang: crate::repo::users::Language) -> String {
+    match &group.name {
+        Some(name) => name.clone(),
+        None => i18n::catalogs().t(lang, "groups.default").to_owned(),
+    }
+}
+
 #[derive(Template)]
 #[template(path = "gallery.html")]
 struct GalleryPage {
     page: Page,
-    filter: &'static str,
+    visibility_links: Vec<FilterLink>,
+    /// Empty unless the user has two or more groups.
+    group_links: Vec<FilterLink>,
     cards: Vec<Card>,
     next: Option<String>,
 }
@@ -137,6 +165,7 @@ struct GalleryCards {
 #[derive(Deserialize)]
 pub struct GalleryQuery {
     filter: Option<String>,
+    group: Option<String>,
     page: Option<String>,
 }
 
@@ -154,11 +183,29 @@ pub async fn gallery(
         .and_then(|p| p.parse::<i64>().ok())
         .filter(|p| (1..=100_000).contains(p))
         .unwrap_or(1);
+    let lang = user.user.language;
+    // With a single group there is nothing to filter by.
+    let groups = device_groups::list_for_user(&state.db, user.user.id).await?;
+    let groups = if groups.len() >= 2 {
+        groups
+    } else {
+        Vec::new()
+    };
+    let group = query
+        .group
+        .as_deref()
+        .and_then(|g| g.parse::<i64>().ok())
+        .and_then(|id| groups.iter().find(|g| g.id == id));
+    let group_id = group.map(|g| g.id);
     // One extra row tells whether there is a next page.
     let mut shots = screenshots::list_for_user(
         &state.db,
         user.user.id,
         filter.visibility(),
+        group.map(|g| GroupFilter {
+            group_id: g.id,
+            is_default: g.is_default,
+        }),
         PAGE_SIZE + 1,
         (page_number - 1) * PAGE_SIZE,
     )
@@ -167,17 +214,53 @@ pub async fn gallery(
     shots.truncate(PAGE_SIZE as usize);
     let now = state.clock.now();
     let cards = shots.iter().map(|s| Card::new(&state, s, now)).collect();
-    let next = has_more.then(|| format!("/app?filter={}&page={}", filter.code(), page_number + 1));
+    let next = has_more.then(|| {
+        let group = group_id
+            .map(|id| format!("&group={id}"))
+            .unwrap_or_default();
+        format!(
+            "/app?filter={}{group}&page={}",
+            filter.code(),
+            page_number + 1
+        )
+    });
 
     let page = Page::user(&user, "gallery.title", "/app");
     if headers.contains_key("hx-request") {
         return html::render(StatusCode::OK, &GalleryCards { page, cards, next });
     }
+    let catalogs = i18n::catalogs();
+    let visibility_links = [
+        (Filter::All, "gallery.all"),
+        (Filter::Public, "gallery.public"),
+        (Filter::Private, "gallery.private"),
+    ]
+    .into_iter()
+    .map(|(f, key)| FilterLink {
+        label: catalogs.t(lang, key).to_owned(),
+        href: gallery_href(f, group_id),
+        current: f == filter,
+    })
+    .collect();
+    let mut group_links = Vec::new();
+    if !groups.is_empty() {
+        group_links.push(FilterLink {
+            label: catalogs.t(lang, "gallery.all_groups").to_owned(),
+            href: gallery_href(filter, None),
+            current: group_id.is_none(),
+        });
+        group_links.extend(groups.iter().map(|g| FilterLink {
+            label: group_name(g, lang),
+            href: gallery_href(filter, Some(g.id)),
+            current: group_id == Some(g.id),
+        }));
+    }
     html::render(
         StatusCode::OK,
         &GalleryPage {
             page,
-            filter: filter.code(),
+            visibility_links,
+            group_links,
             cards,
             next,
         },
@@ -458,6 +541,17 @@ pub async fn delete(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn hrefs() {
+        assert_eq!(gallery_href(Filter::All, None), "/app");
+        assert_eq!(gallery_href(Filter::All, Some(3)), "/app?group=3");
+        assert_eq!(gallery_href(Filter::Public, None), "/app?filter=public");
+        assert_eq!(
+            gallery_href(Filter::Private, Some(3)),
+            "/app?filter=private&group=3"
+        );
+    }
 
     #[test]
     fn filters() {

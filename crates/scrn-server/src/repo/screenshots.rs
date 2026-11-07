@@ -58,6 +58,8 @@ impl Screenshot {
 pub struct NewScreenshot {
     pub id: Uuid,
     pub user_id: i64,
+    /// The API token that uploaded it.
+    pub token_id: Option<i64>,
     pub public: Option<PublicLink>,
     pub width: i64,
     pub height: i64,
@@ -132,13 +134,14 @@ pub async fn insert(
     let (visibility, short_id, expires_at) = split_link(new.public.as_ref());
     let sql = concat!(
         "INSERT INTO screenshots \
-         (id, user_id, visibility, short_id, width, height, bytes, thumb_bytes, sha256, created_at, expires_at) \
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING ",
+         (id, user_id, token_id, visibility, short_id, width, height, bytes, thumb_bytes, sha256, created_at, expires_at) \
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING ",
         columns!()
     );
     let row: Row = sqlx::query_as(sql)
         .bind(new.id.to_string())
         .bind(new.user_id)
+        .bind(new.token_id)
         .bind(visibility)
         .bind(short_id)
         .bind(new.width)
@@ -193,11 +196,22 @@ pub async fn get_by_short_id(
     )
 }
 
-/// Screenshots of a user, newest first, optionally filtered by visibility.
+/// Restricts a listing to the screenshots of one device group: those
+/// uploaded with a token that is in the group now.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct GroupFilter {
+    pub group_id: i64,
+    /// Screenshots without a token count as part of the default group.
+    pub is_default: bool,
+}
+
+/// Screenshots of a user, newest first, optionally filtered by visibility
+/// and device group.
 pub async fn list_for_user(
     db: impl SqliteExecutor<'_>,
     user_id: i64,
     visibility: Option<Visibility>,
+    group: Option<GroupFilter>,
     limit: i64,
     offset: i64,
 ) -> Result<Vec<Screenshot>, RepoError> {
@@ -206,12 +220,19 @@ pub async fn list_for_user(
         columns!(),
         " FROM screenshots \
          WHERE user_id = ? AND (? IS NULL OR visibility = ?) \
+         AND (? IS NULL \
+              OR token_id IN (SELECT id FROM api_tokens WHERE group_id = ?) \
+              OR (? AND token_id IS NULL)) \
          ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?"
     );
+    let group_id = group.map(|g| g.group_id);
     let rows: Vec<Row> = sqlx::query_as(sql)
         .bind(user_id)
         .bind(visibility)
         .bind(visibility)
+        .bind(group_id)
+        .bind(group_id)
+        .bind(group.is_some_and(|g| g.is_default))
         .bind(limit)
         .bind(offset)
         .fetch_all(db)
@@ -375,6 +396,7 @@ mod tests {
 
     fn new(user_id: i64, public: Option<PublicLink>) -> NewScreenshot {
         NewScreenshot {
+            token_id: None,
             id: Uuid::new_v4(),
             user_id,
             public,
@@ -641,12 +663,14 @@ mod tests {
 
         let ids = |v: Vec<Screenshot>| v.into_iter().map(|s| s.id).collect::<Vec<_>>();
         assert_eq!(
-            ids(list_for_user(&pool, alice.id, None, 10, 0).await.unwrap()),
+            ids(list_for_user(&pool, alice.id, None, None, 10, 0)
+                .await
+                .unwrap()),
             [c.id, b.id, a.id]
         );
         assert_eq!(
             ids(
-                list_for_user(&pool, alice.id, Some(Visibility::Public), 10, 0)
+                list_for_user(&pool, alice.id, Some(Visibility::Public), None, 10, 0)
                     .await
                     .unwrap()
             ),
@@ -654,20 +678,82 @@ mod tests {
         );
         assert_eq!(
             ids(
-                list_for_user(&pool, alice.id, Some(Visibility::Private), 10, 0)
+                list_for_user(&pool, alice.id, Some(Visibility::Private), None, 10, 0)
                     .await
                     .unwrap()
             ),
             [c.id, a.id]
         );
         assert_eq!(
-            ids(list_for_user(&pool, alice.id, None, 1, 0).await.unwrap()),
+            ids(list_for_user(&pool, alice.id, None, None, 1, 0)
+                .await
+                .unwrap()),
             [c.id]
         );
         assert_eq!(
-            ids(list_for_user(&pool, alice.id, None, 2, 1).await.unwrap()),
+            ids(list_for_user(&pool, alice.id, None, None, 2, 1)
+                .await
+                .unwrap()),
             [b.id, a.id]
         );
+    }
+
+    #[tokio::test]
+    async fn list_filters_by_device_group() {
+        use crate::repo::{api_tokens, device_groups};
+        let (_dir, pool) = test_util::pool().await;
+        let alice = test_util::user(&pool, "alice").await;
+        let default = device_groups::list_for_user(&pool, alice.id).await.unwrap()[0].id;
+        let work = device_groups::create(&pool, alice.id, "Work", 1)
+            .await
+            .unwrap();
+        let laptop = api_tokens::create(
+            &pool,
+            alice.id,
+            Some(work),
+            "laptop",
+            &test_util::hash(1),
+            1,
+        )
+        .await
+        .unwrap();
+        let desktop = api_tokens::create(&pool, alice.id, None, "desktop", &test_util::hash(2), 1)
+            .await
+            .unwrap();
+        let upload = |token: Option<i64>| NewScreenshot {
+            token_id: token,
+            ..new(alice.id, None)
+        };
+        let old = insert(&pool, &upload(None), 100).await.unwrap();
+        let from_desktop = insert(&pool, &upload(Some(desktop.id)), 200).await.unwrap();
+        let from_laptop = insert(&pool, &upload(Some(laptop.id)), 300).await.unwrap();
+
+        let in_group = |group_id, is_default| {
+            let pool = pool.clone();
+            async move {
+                let filter = GroupFilter {
+                    group_id,
+                    is_default,
+                };
+                list_for_user(&pool, alice.id, None, Some(filter), 10, 0)
+                    .await
+                    .unwrap()
+                    .into_iter()
+                    .map(|s| s.id)
+                    .collect::<Vec<_>>()
+            }
+        };
+        assert_eq!(in_group(work, false).await, [from_laptop.id]);
+        assert_eq!(in_group(default, true).await, [from_desktop.id, old.id]);
+
+        // Moving the token moves its screenshots.
+        assert!(
+            api_tokens::set_group(&pool, laptop.id, alice.id, default)
+                .await
+                .unwrap()
+        );
+        assert!(in_group(work, false).await.is_empty());
+        assert_eq!(in_group(default, true).await.len(), 3);
     }
 
     #[tokio::test]

@@ -215,3 +215,20 @@ reset.done = Your new password is saved. You can sign in with it now.
 admin.reset.create = Reset link
 admin.reset.created = Password reset link for {username}. It works once within 24 hours and is shown only now:
 passkey.welcome = Welcome! Add a passkey now, so you can get into your account without a password too.
+
+# Device groups
+groups.title = Device groups
+groups.intro = Put your API tokens into groups, such as “Work” or “Home”. A screenshot belongs to the group of the token that uploaded it, so moving a token moves its screenshots too. With two or more groups the gallery can filter by group.
+groups.name = Group name
+groups.create = Add group
+groups.col.tokens = Tokens
+groups.default = Default
+groups.is_default = Default group
+groups.delete = Delete
+groups.delete_hint = Its tokens move to the default group.
+groups.group = Group
+groups.assign = Move
+gallery.group_filter = Device group
+gallery.all_groups = All devices
+error.group_name = The group name must be 1 to 50 characters long.
+error.group_taken = You already have a group with this name.
