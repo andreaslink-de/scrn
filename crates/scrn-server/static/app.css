@@ -334,6 +334,17 @@ button.small {
   margin: 0;
 }
 
+/* Several small forms side by side, e.g. the actions of a table row. */
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.actions form {
+  margin: 0;
+}
+
 /* Messages */
 
 .alert,
@@ -747,7 +758,8 @@ details[open] summary {
 
 /* Passkeys */
 
-.passkey-login {
+.passkey-login,
+.passkey-confirm {
   margin-top: 1.25rem;
 }
 
@@ -766,7 +778,8 @@ details[open] summary {
   border-top: 1px solid var(--border);
 }
 
-.passkey-login .alert {
+.passkey-login .alert,
+.passkey-confirm .alert {
   margin-top: 0.75rem;
 }
 

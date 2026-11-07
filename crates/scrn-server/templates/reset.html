@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+<p>{{ page.t("reset.intro") }}</p>
+{% if let Some(error) = error %}<p class="alert" role="alert">{{ error }}</p>{% endif %}
+<form method="post" action="/reset/{{ token }}">
+<input type="hidden" name="csrf" value="{{ csrf }}">
+<div class="field">
+<label for="username">{{ page.t("field.username") }}</label>
+<input id="username" name="username" type="text" value="{{ username }}" autocomplete="username" readonly>
+</div>
+<div class="field">
+<label for="password">{{ page.t("password.new") }}</label>
+<input id="password" name="password" type="password" autocomplete="new-password" minlength="{{ min_password }}" required autofocus aria-describedby="password-hint">
+<small id="password-hint" class="hint">{{ page.tf("field.password_hint", "min", min_password.to_string().as_str()) }}</small>
+</div>
+<div class="field">
+<label for="password_confirm">{{ page.t("field.password_confirm") }}</label>
+<input id="password_confirm" name="password_confirm" type="password" autocomplete="new-password" minlength="{{ min_password }}" required>
+</div>
+<button type="submit">{{ page.t("reset.submit") }}</button>
+</form>
+</div>
+{% endblock %}

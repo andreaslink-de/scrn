@@ -12,12 +12,14 @@ pub struct Session {
     pub created_at: i64,
     pub last_seen_at: i64,
     pub expires_at: i64,
+    /// Last passkey confirmation within this session.
+    pub passkey_at: Option<i64>,
 }
 
 /// Selected columns, shared by all queries of this module.
 macro_rules! columns {
     () => {
-        "user_id, created_at, last_seen_at, expires_at"
+        "user_id, created_at, last_seen_at, expires_at, passkey_at"
     };
 }
 
@@ -27,10 +29,11 @@ pub async fn create(
     user_id: i64,
     now: i64,
     expires_at: i64,
+    passkey_at: Option<i64>,
 ) -> Result<Session, RepoError> {
     let sql = concat!(
-        "INSERT INTO sessions (id_hash, user_id, created_at, last_seen_at, expires_at) \
-         VALUES (?, ?, ?, ?, ?) RETURNING ",
+        "INSERT INTO sessions (id_hash, user_id, created_at, last_seen_at, expires_at, passkey_at) \
+         VALUES (?, ?, ?, ?, ?, ?) RETURNING ",
         columns!()
     );
     Ok(sqlx::query_as(sql)
@@ -39,6 +42,7 @@ pub async fn create(
         .bind(now)
         .bind(now)
         .bind(expires_at)
+        .bind(passkey_at)
         .fetch_one(db)
         .await?)
 }
@@ -96,6 +100,35 @@ pub async fn delete_for_user(db: impl SqliteExecutor<'_>, user_id: i64) -> Resul
     Ok(result.rows_affected())
 }
 
+/// Records that the user of a session just confirmed with a passkey.
+pub async fn set_passkey_at(
+    db: impl SqliteExecutor<'_>,
+    id_hash: &Sha256,
+    now: i64,
+) -> Result<bool, RepoError> {
+    let result = sqlx::query("UPDATE sessions SET passkey_at = ? WHERE id_hash = ?")
+        .bind(now)
+        .bind(&id_hash[..])
+        .execute(db)
+        .await?;
+    Ok(result.rows_affected() == 1)
+}
+
+/// Deletes all sessions of a user except `keep`, e.g. after the user
+/// changed their password.
+pub async fn delete_others_for_user(
+    db: impl SqliteExecutor<'_>,
+    user_id: i64,
+    keep: &Sha256,
+) -> Result<u64, RepoError> {
+    let result = sqlx::query("DELETE FROM sessions WHERE user_id = ? AND id_hash != ?")
+        .bind(user_id)
+        .bind(&keep[..])
+        .execute(db)
+        .await?;
+    Ok(result.rows_affected())
+}
+
 /// Deletes all sessions that expired at or before `now`.
 pub async fn delete_expired(db: impl SqliteExecutor<'_>, now: i64) -> Result<u64, RepoError> {
     let result = sqlx::query("DELETE FROM sessions WHERE expires_at <= ?")
@@ -114,7 +147,7 @@ mod tests {
     async fn create_read_and_expire() {
         let (_dir, pool) = test_util::pool().await;
         let user = test_util::user(&pool, "alice").await;
-        let session = create(&pool, &test_util::hash(1), user.id, 100, 200)
+        let session = create(&pool, &test_util::hash(1), user.id, 100, 200, None)
             .await
             .unwrap();
         assert_eq!(session.last_seen_at, 100);
@@ -137,7 +170,7 @@ mod tests {
     async fn touch_extends_expiry() {
         let (_dir, pool) = test_util::pool().await;
         let user = test_util::user(&pool, "alice").await;
-        create(&pool, &test_util::hash(1), user.id, 100, 200)
+        create(&pool, &test_util::hash(1), user.id, 100, 200, None)
             .await
             .unwrap();
         assert!(touch(&pool, &test_util::hash(1), 150, 300).await.unwrap());
@@ -149,22 +182,63 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn passkey_confirmation_is_stored() {
+        let (_dir, pool) = test_util::pool().await;
+        let user = test_util::user(&pool, "alice").await;
+        let session = create(&pool, &test_util::hash(1), user.id, 100, 200, Some(100))
+            .await
+            .unwrap();
+        assert_eq!(session.passkey_at, Some(100));
+        assert!(
+            set_passkey_at(&pool, &test_util::hash(1), 150)
+                .await
+                .unwrap()
+        );
+        let session = get_valid(&pool, &test_util::hash(1), 160)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(session.passkey_at, Some(150));
+        assert!(
+            !set_passkey_at(&pool, &test_util::hash(2), 150)
+                .await
+                .unwrap()
+        );
+    }
+
+    #[tokio::test]
     async fn delete_variants() {
         let (_dir, pool) = test_util::pool().await;
         let alice = test_util::user(&pool, "alice").await;
         let bob = test_util::user(&pool, "bob").await;
-        create(&pool, &test_util::hash(1), alice.id, 100, 200)
+        create(&pool, &test_util::hash(1), alice.id, 100, 200, None)
             .await
             .unwrap();
-        create(&pool, &test_util::hash(2), alice.id, 100, 300)
+        create(&pool, &test_util::hash(2), alice.id, 100, 300, None)
             .await
             .unwrap();
-        create(&pool, &test_util::hash(3), bob.id, 100, 300)
+        create(&pool, &test_util::hash(3), bob.id, 100, 300, None)
             .await
             .unwrap();
 
         assert_eq!(delete_expired(&pool, 200).await.unwrap(), 1);
-        assert_eq!(delete_for_user(&pool, alice.id).await.unwrap(), 1);
+        create(&pool, &test_util::hash(4), alice.id, 100, 300, None)
+            .await
+            .unwrap();
+        assert_eq!(
+            delete_others_for_user(&pool, alice.id, &test_util::hash(4))
+                .await
+                .unwrap(),
+            1
+        );
+        assert!(
+            get_valid(&pool, &test_util::hash(4), 150)
+                .await
+                .unwrap()
+                .is_some()
+        );
+        assert!(delete(&pool, &test_util::hash(4)).await.unwrap());
+        assert_eq!(delete_for_user(&pool, alice.id).await.unwrap(), 0);
         assert!(delete(&pool, &test_util::hash(3)).await.unwrap());
         assert!(!delete(&pool, &test_util::hash(3)).await.unwrap());
     }
@@ -173,7 +247,7 @@ mod tests {
     async fn deleting_the_user_cascades() {
         let (_dir, pool) = test_util::pool().await;
         let user = test_util::user(&pool, "alice").await;
-        create(&pool, &test_util::hash(1), user.id, 100, 200)
+        create(&pool, &test_util::hash(1), user.id, 100, 200, None)
             .await
             .unwrap();
         users::delete(&pool, user.id).await.unwrap();

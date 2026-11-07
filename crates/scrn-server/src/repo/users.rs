@@ -186,6 +186,21 @@ pub async fn set_preferences(
     Ok(result.rows_affected() == 1)
 }
 
+/// Replaces the password hash of a user. Returns false if the user does
+/// not exist.
+pub async fn set_password_hash(
+    db: impl SqliteExecutor<'_>,
+    id: i64,
+    password_hash: &str,
+) -> Result<bool, RepoError> {
+    let result = sqlx::query("UPDATE users SET password_hash = ? WHERE id = ?")
+        .bind(password_hash)
+        .bind(id)
+        .execute(db)
+        .await?;
+    Ok(result.rows_affected() == 1)
+}
+
 /// Sets the storage quota of a user: `None` for the server default,
 /// `Some(0)` for unlimited. Existing screenshots are never touched; a quota
 /// below the current usage only blocks new uploads. Returns false if the
@@ -217,6 +232,20 @@ pub async fn delete(db: impl SqliteExecutor<'_>, id: i64) -> Result<bool, RepoEr
 mod tests {
     use super::*;
     use crate::repo::test_util;
+
+    #[tokio::test]
+    async fn password_hash_is_replaced() {
+        let (_dir, pool) = test_util::pool().await;
+        let user = test_util::user(&pool, "alice").await;
+        assert!(
+            set_password_hash(&pool, user.id, "$argon2id$new")
+                .await
+                .unwrap()
+        );
+        let user = get_by_id(&pool, user.id).await.unwrap().unwrap();
+        assert_eq!(user.password_hash.as_deref(), Some("$argon2id$new"));
+        assert!(!set_password_hash(&pool, user.id + 1, "x").await.unwrap());
+    }
 
     #[tokio::test]
     async fn preferences_are_stored() {

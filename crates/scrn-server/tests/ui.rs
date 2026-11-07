@@ -289,7 +289,7 @@ async fn new_accounts_keep_the_page_language() {
             ],
         )
         .await
-        .assert_redirect("/app");
+        .assert_redirect("/app/settings?welcome=1#passkeys");
     let bob = users::get_by_username(&server.state.db, "bob")
         .await
         .unwrap()

@@ -22,9 +22,9 @@ use crate::error::AppError;
 use crate::i18n;
 use crate::passkey::{self, Authentication, Passkeys, Registration};
 use crate::prefs::Prefs;
-use crate::repo::RepoError;
 use crate::repo::passkeys::{self as repo, NewPasskey};
 use crate::repo::users::{self, Language};
+use crate::repo::{RepoError, sessions};
 
 const CSRF_HEADER: &str = "x-csrf-token";
 
@@ -293,17 +293,8 @@ pub async fn login_finish(
         .authentications
         .take(&body.ceremony, now)
         .ok_or_else(|| JsonError::new(StatusCode::BAD_REQUEST, lang, "passkey.expired"))?;
-    let result = passkeys
-        .webauthn
-        .finish_passkey_authentication(&body.credential, &pending.state)
-        .map_err(|err| {
-            tracing::info!(user_id = pending.user_id, error = %err, "passkey login rejected");
-            failed()
-        })?;
-    let row = repo::get_by_credential_id(&state.db, result.cred_id().as_ref())
-        .await
-        .map_err(|e| JsonError::internal(lang, e))?
-        .filter(|row| row.user_id == pending.user_id)
+    let row = verify_assertion(&state, passkeys, &pending, &body.credential, lang)
+        .await?
         .ok_or_else(failed)?;
     let user = users::get_by_id(&state.db, pending.user_id)
         .await
@@ -311,15 +302,7 @@ pub async fn login_finish(
         .filter(|u| !u.is_disabled())
         .ok_or_else(failed)?;
 
-    // Store the new signature counter and backup state.
-    let mut stored = parse_stored(&row).map_err(|e| JsonError::internal(lang, e))?;
-    stored.update_credential(&result);
-    let credential = serde_json::to_string(&stored).map_err(|e| JsonError::internal(lang, e))?;
-    repo::record_use(&state.db, row.id, &credential, now)
-        .await
-        .map_err(|e| JsonError::internal(lang, e))?;
-
-    let cookie = auth::start_session(&state, user.id)
+    let cookie = auth::start_session(&state, user.id, auth::SignIn::Passkey)
         .await
         .map_err(|e| JsonError::internal(lang, e))?;
     tracing::info!(
@@ -333,6 +316,118 @@ pub async fn login_finish(
         response.headers_mut().append(SET_COOKIE, cookie);
     }
     Ok(response)
+}
+
+/// Checks a passkey response against a pending ceremony and stores the new
+/// signature counter. `Ok(None)` means the response was rejected.
+async fn verify_assertion(
+    state: &AppState,
+    passkeys: &Passkeys,
+    pending: &Authentication,
+    credential: &PublicKeyCredential,
+    lang: Language,
+) -> Result<Option<repo::Passkey>, JsonError> {
+    let result = match passkeys
+        .webauthn
+        .finish_passkey_authentication(credential, &pending.state)
+    {
+        Ok(result) => result,
+        Err(err) => {
+            tracing::info!(user_id = pending.user_id, error = %err, "passkey response rejected");
+            return Ok(None);
+        }
+    };
+    let Some(row) = repo::get_by_credential_id(&state.db, result.cred_id().as_ref())
+        .await
+        .map_err(|e| JsonError::internal(lang, e))?
+        .filter(|row| row.user_id == pending.user_id)
+    else {
+        return Ok(None);
+    };
+    // Store the new signature counter and backup state.
+    let mut stored = parse_stored(&row).map_err(|e| JsonError::internal(lang, e))?;
+    stored.update_credential(&result);
+    let updated = serde_json::to_string(&stored).map_err(|e| JsonError::internal(lang, e))?;
+    repo::record_use(&state.db, row.id, &updated, state.clock.now())
+        .await
+        .map_err(|e| JsonError::internal(lang, e))?;
+    Ok(Some(row))
+}
+
+// --- Confirmation (logged in) ------------------------------------------------
+//
+// A logged-in user proves again that they hold one of their passkeys. The
+// session remembers the time, and for a few minutes this replaces the
+// current password when setting a new one.
+
+pub async fn confirm_start(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    headers: HeaderMap,
+) -> Result<Json<Started<impl Serialize>>, JsonError> {
+    let lang = user.user.language;
+    user.verify_csrf(csrf_header(&headers))
+        .map_err(|_| JsonError::new(StatusCode::FORBIDDEN, lang, "error.csrf"))?;
+    let passkeys = enabled(&state, lang)?;
+    let credentials: Vec<Passkey> = repo::list_for_user(&state.db, user.user.id)
+        .await
+        .map_err(|e| JsonError::internal(lang, e))?
+        .iter()
+        .filter_map(|row| parse_stored(row).ok())
+        .collect();
+    if credentials.is_empty() {
+        return Err(JsonError::new(
+            StatusCode::BAD_REQUEST,
+            lang,
+            "password.no_passkey",
+        ));
+    }
+    let (options, auth_state) = passkeys
+        .webauthn
+        .start_passkey_authentication(&credentials)
+        .map_err(|e| JsonError::internal(lang, e))?;
+    let ceremony = passkeys
+        .authentications
+        .insert(
+            Authentication {
+                user_id: user.user.id,
+                state: auth_state,
+            },
+            state.clock.now(),
+        )
+        .map_err(|_| JsonError::new(StatusCode::SERVICE_UNAVAILABLE, lang, "passkey.busy"))?;
+    Ok(Json(Started { ceremony, options }))
+}
+
+pub async fn confirm_finish(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    headers: HeaderMap,
+    Json(body): Json<LoginFinish>,
+) -> Result<Json<Done>, JsonError> {
+    let lang = user.user.language;
+    user.verify_csrf(csrf_header(&headers))
+        .map_err(|_| JsonError::new(StatusCode::FORBIDDEN, lang, "error.csrf"))?;
+    let passkeys = enabled(&state, lang)?;
+    let pending = passkeys
+        .authentications
+        .take(&body.ceremony, state.clock.now())
+        .filter(|auth| auth.user_id == user.user.id)
+        .ok_or_else(|| JsonError::new(StatusCode::BAD_REQUEST, lang, "passkey.expired"))?;
+    let row = verify_assertion(&state, passkeys, &pending, &body.credential, lang)
+        .await?
+        .ok_or_else(|| JsonError::new(StatusCode::UNAUTHORIZED, lang, "passkey.failed"))?;
+    sessions::set_passkey_at(&state.db, &user.session_hash, state.clock.now())
+        .await
+        .map_err(|e| JsonError::internal(lang, e))?;
+    tracing::info!(
+        user_id = user.user.id,
+        passkey_id = row.id,
+        "user confirmed with passkey"
+    );
+    Ok(Json(Done {
+        redirect: "/app/settings?confirmed=1#password",
+    }))
 }
 
 // --- Management forms --------------------------------------------------------

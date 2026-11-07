@@ -1,9 +1,10 @@
 //! SCRN server binary.
 //!
 //! `scrn-server` runs the server, `scrn-server healthcheck` probes a running
-//! instance (used by the Docker `HEALTHCHECK`) and `scrn-server backup
+//! instance (used by the Docker `HEALTHCHECK`), `scrn-server backup
 //! <file>` writes a consistent copy of the database (used by
-//! `scripts/backup.sh`).
+//! `scripts/backup.sh`) and `scrn-server reset-link <username>` prints a
+//! password reset link, the way back in for an admin who lost access.
 
 use std::io::IsTerminal;
 use std::process::ExitCode;
@@ -24,13 +25,20 @@ async fn main() -> ExitCode {
                 ExitCode::from(2)
             }
         },
+        Some("reset-link") => match args.get(1) {
+            Some(username) if args.len() == 2 => run_reset_link(username).await,
+            _ => {
+                eprintln!("usage: scrn-server reset-link <username>");
+                ExitCode::from(2)
+            }
+        },
         Some("--version" | "-V") => {
             println!("scrn-server {}", env!("CARGO_PKG_VERSION"));
             ExitCode::SUCCESS
         }
         Some(other) => {
             eprintln!(
-                "unknown argument {other:?}; usage: scrn-server [healthcheck | backup <file> | --version]"
+                "unknown argument {other:?}; usage: scrn-server [healthcheck | backup <file> | reset-link <username> | --version]"
             );
             ExitCode::from(2)
         }
@@ -93,6 +101,40 @@ async fn run_backup(target: &str) -> ExitCode {
         Ok(()) => {
             println!("database backup written to {target}");
             ExitCode::SUCCESS
+        }
+        Err(err) => {
+            eprintln!("{err}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+async fn run_reset_link(username: &str) -> ExitCode {
+    let config = match Config::from_env() {
+        Ok(config) => config,
+        Err(err) => {
+            eprintln!("invalid configuration: {err}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let pool = match scrn_server::db::connect(&config.database_path()).await {
+        Ok(pool) => pool,
+        Err(err) => {
+            eprintln!("{err}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let now = scrn_server::clock::Clock::now(&scrn_server::clock::SystemClock);
+    let result = scrn_server::issue_cli_reset_link(&pool, &config, username, now).await;
+    pool.close().await;
+    match result {
+        Ok(Some(link)) => {
+            println!("Password reset link for {username}, valid once within 24 hours:\n{link}");
+            ExitCode::SUCCESS
+        }
+        Ok(None) => {
+            eprintln!("no user named {username:?}");
+            ExitCode::FAILURE
         }
         Err(err) => {
             eprintln!("{err}");

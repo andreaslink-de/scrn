@@ -8,6 +8,7 @@
 pub mod api_tokens;
 pub mod invites;
 pub mod passkeys;
+pub mod password_resets;
 pub mod screenshots;
 pub mod sessions;
 pub mod users;

@@ -6,6 +6,27 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Change the password under *Settings → Password*. Instead of the current
+  password, a passkey works too: a passkey login or *Confirm with passkey*
+  replaces it for 10 minutes. Other sessions of the account end.
+- Password reset links: an admin creates one per user on the
+  administration page. It is shown once, works once within 24 hours and
+  ends all sessions of the account.
+- `scrn-server reset-link <username>` prints a reset link on the command
+  line, so an admin who lost their password gets back in
+  (`docker compose exec scrn scrn-server reset-link admin`).
+- After the setup and after registering through an invitation, the
+  settings page suggests adding a passkey.
+
+### Changed
+
+- The setup token field is a plain text field marked as one-time code, so
+  password managers no longer offer to store the token as the admin
+  password.
+- `reset` is a reserved short ID prefix.
+
 ## [0.3.0] - 2026-11-06
 
 ### Added
