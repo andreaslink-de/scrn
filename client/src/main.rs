@@ -14,14 +14,17 @@ mod config;
 mod desktop;
 mod history;
 mod i18n;
+mod paths;
+#[cfg(target_os = "linux")]
 mod permission;
 mod report;
 mod secret;
+#[cfg(windows)]
+mod shortcut;
 
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use gtk::prelude::GtkWindowExt;
 use serde::Serialize;
 use tauri::http::{Response, StatusCode, header::CONTENT_TYPE};
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
@@ -44,6 +47,7 @@ const EDITOR: &str = "editor";
 /// The settings window.
 const SETTINGS: &str = "settings";
 /// Label of the window that asks for the screenshot permission.
+#[cfg(target_os = "linux")]
 const PERMISSION: &str = "permission";
 
 /// Toolbar height and margins of the editor window in logical pixels.
@@ -59,6 +63,8 @@ struct AppState {
     history: Mutex<Vec<history::Entry>>,
     /// Uploads in flight; the tray shows the empty mark meanwhile.
     uploads: AtomicUsize,
+    /// Why the keyboard shortcut could not be registered, if it failed.
+    shortcut_error: Mutex<Option<String>>,
 }
 
 fn lock<T>(slot: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
@@ -124,7 +130,10 @@ fn main() {
         ..AppState::default()
     };
 
-    let result = tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    #[cfg(windows)]
+    let builder = builder.plugin(shortcut::plugin());
+    let result = builder
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
             report::note(format!("second start handed over: args={:?}", &argv[1..]));
             match parse_command(argv.get(1).map(String::as_str)) {
@@ -154,6 +163,8 @@ fn main() {
         .setup(move |app| {
             build_tray(app.handle())?;
             log_monitors(app.handle());
+            #[cfg(windows)]
+            shortcut::apply(app.handle());
             run_command(app.handle(), command, "command");
             Ok(())
         })
@@ -175,18 +186,40 @@ fn main() {
     });
 }
 
-/// The tray icon: macOS colors a black template itself. GNOME's top bar is
-/// dark in both themes, so Linux takes the green for dark backgrounds.
-/// Windows with a light taskbar follows in C2 (`tray-on-light`). While an
-/// upload runs, the tray shows the brackets without the bars.
+/// The tray icons, normal and while an upload runs (the brackets without
+/// the bars). GNOME's top bar is dark in both themes, so Linux takes the
+/// green for dark backgrounds; Windows follows the theme of the taskbar;
+/// macOS colors a black template itself.
+#[cfg(target_os = "linux")]
+fn tray_icons() -> (&'static [u8], &'static [u8]) {
+    (
+        include_bytes!("../icons/tray/tray-on-dark@2x.png"),
+        include_bytes!("../icons/tray/empty/tray-on-dark@2x.png"),
+    )
+}
+
+#[cfg(windows)]
+fn tray_icons() -> (&'static [u8], &'static [u8]) {
+    if desktop::taskbar_is_light() {
+        (
+            include_bytes!("../icons/tray/tray-on-light@2x.png"),
+            include_bytes!("../icons/tray/empty/tray-on-light@2x.png"),
+        )
+    } else {
+        (
+            include_bytes!("../icons/tray/tray-on-dark@2x.png"),
+            include_bytes!("../icons/tray/empty/tray-on-dark@2x.png"),
+        )
+    }
+}
+
 #[cfg(target_os = "macos")]
-const TRAY_ICON: &[u8] = include_bytes!("../icons/tray/tray-template@2x.png");
-#[cfg(target_os = "macos")]
-const TRAY_BUSY: &[u8] = include_bytes!("../icons/tray/empty/tray-template@2x.png");
-#[cfg(not(target_os = "macos"))]
-const TRAY_ICON: &[u8] = include_bytes!("../icons/tray/tray-on-dark@2x.png");
-#[cfg(not(target_os = "macos"))]
-const TRAY_BUSY: &[u8] = include_bytes!("../icons/tray/empty/tray-on-dark@2x.png");
+fn tray_icons() -> (&'static [u8], &'static [u8]) {
+    (
+        include_bytes!("../icons/tray/tray-template@2x.png"),
+        include_bytes!("../icons/tray/empty/tray-template@2x.png"),
+    )
+}
 
 const TRAY: &str = "main";
 /// Menu IDs of the recent links: `recent-<index in the history>`.
@@ -194,7 +227,7 @@ const RECENT: &str = "recent-";
 
 fn build_tray(app: &AppHandle) -> tauri::Result<()> {
     let menu = tray_menu(app)?;
-    let icon = tauri::image::Image::from_bytes(TRAY_ICON)?;
+    let icon = tauri::image::Image::from_bytes(tray_icons().0)?;
     TrayIconBuilder::with_id(TRAY)
         .icon(icon)
         .icon_as_template(cfg!(target_os = "macos"))
@@ -279,7 +312,8 @@ fn set_busy(app: &AppHandle, busy: bool) {
             .fetch_sub(1, Ordering::SeqCst)
             .saturating_sub(1)
     };
-    let icon = if running > 0 { TRAY_BUSY } else { TRAY_ICON };
+    let (normal, busy) = tray_icons();
+    let icon = if running > 0 { busy } else { normal };
     if let (Some(tray), Ok(image)) = (app.tray_by_id(TRAY), tauri::image::Image::from_bytes(icon)) {
         let _ = tray.set_icon(Some(image));
         let _ = tray.set_icon_as_template(cfg!(target_os = "macos"));
@@ -534,14 +568,13 @@ fn start_capture(app: &AppHandle, source: &'static str) {
         }
         let started = std::time::Instant::now();
         match capture::take().await {
-            Ok((shot, portal_path)) => {
+            Ok((shot, how)) => {
                 report::note(format!(
-                    "portal screenshot: {}x{} px, {} bytes, {} ms, file {} (removed)",
+                    "screenshot: {}x{} px, {} bytes, {} ms, {how}",
                     shot.width,
                     shot.height,
                     shot.png.len(),
                     started.elapsed().as_millis(),
-                    portal_path.display()
                 ));
                 *lock(&app.state::<AppState>().capture) = Some(shot);
                 if let Err(err) = open_overlays(&app) {
@@ -561,9 +594,11 @@ fn start_capture(app: &AppHandle, source: &'static str) {
 /// as an app without the stored permission opens the permission window;
 /// anything else becomes a notification.
 async fn capture_failed(app: &AppHandle, err: &capture::CaptureError) {
+    #[cfg(target_os = "linux")]
     if err.is_cancelled() {
         return;
     }
+    #[cfg(target_os = "linux")]
     if err.is_portal()
         && let Some(id) = permission::app_id()
     {
@@ -576,9 +611,12 @@ async fn capture_failed(app: &AppHandle, err: &capture::CaptureError) {
             return;
         }
     }
+    #[cfg(not(target_os = "linux"))]
+    let _ = app;
     desktop::notify(t("notify.capture_failed"), &err.to_string());
 }
 
+#[cfg(target_os = "linux")]
 fn open_permission(app: &AppHandle) -> tauri::Result<()> {
     if let Some(window) = app.get_webview_window(PERMISSION) {
         return window.set_focus();
@@ -596,6 +634,7 @@ fn open_permission(app: &AppHandle) -> tauri::Result<()> {
 /// Stores the screenshot permission after the user agreed in the
 /// permission window, then takes the screenshot that failed.
 #[tauri::command]
+#[cfg(target_os = "linux")]
 async fn allow_screenshots(app: AppHandle) -> Result<(), String> {
     let id = permission::app_id().ok_or_else(|| t("permission.no_app").to_owned())?;
     permission::grant(&id).await.map_err(|err| {
@@ -610,11 +649,17 @@ async fn allow_screenshots(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-/// Opens one overlay per monitor. Wayland ignores window positions, so
-/// each window is put fullscreen on its monitor through GTK.
+/// Only Linux asks for a stored screenshot permission.
+#[tauri::command]
+#[cfg(not(target_os = "linux"))]
+fn allow_screenshots() -> Result<(), String> {
+    Err("not needed on this system".into())
+}
+
+/// Opens one overlay per monitor, each fullscreen on its own monitor.
 fn open_overlays(app: &AppHandle) -> tauri::Result<()> {
-    let count = app.available_monitors()?.len().max(1);
-    for index in 0..count {
+    let monitors = app.available_monitors()?;
+    for index in 0..monitors.len().max(1) {
         let window = WebviewWindowBuilder::new(
             app,
             format!("{OVERLAY}{index}"),
@@ -624,29 +669,64 @@ fn open_overlays(app: &AppHandle) -> tauri::Result<()> {
         .decorations(false)
         .always_on_top(true)
         .resizable(false)
+        .skip_taskbar(true)
         .visible(false)
         .build()?;
-        let Ok(monitor) = i32::try_from(index) else {
-            continue;
-        };
-        app.run_on_main_thread(move || {
-            let gtk_window = match window.gtk_window() {
-                Ok(w) => w,
-                Err(err) => {
-                    report::note(format!("overlay {monitor}: no GTK window: {err}"));
-                    return;
-                }
-            };
-            let Some(screen) = gtk::gdk::Screen::default() else {
-                report::note("no GDK screen");
+        show_overlay(app, window, index, monitors.get(index))?;
+    }
+    Ok(())
+}
+
+/// Wayland ignores window positions, so GTK puts the window fullscreen on
+/// its monitor (`gtk_window_fullscreen_on_monitor`).
+#[cfg(target_os = "linux")]
+fn show_overlay(
+    app: &AppHandle,
+    window: WebviewWindow,
+    index: usize,
+    _monitor: Option<&tauri::Monitor>,
+) -> tauri::Result<()> {
+    use gtk::prelude::GtkWindowExt;
+    let Ok(monitor) = i32::try_from(index) else {
+        return Ok(());
+    };
+    app.run_on_main_thread(move || {
+        let gtk_window = match window.gtk_window() {
+            Ok(w) => w,
+            Err(err) => {
+                report::note(format!("overlay {monitor}: no GTK window: {err}"));
                 return;
-            };
-            gtk_window.fullscreen_on_monitor(&screen, monitor);
-            let _ = window.show();
-            if monitor == 0 {
-                let _ = window.set_focus();
             }
-        })?;
+        };
+        let Some(screen) = gtk::gdk::Screen::default() else {
+            report::note("no GDK screen");
+            return;
+        };
+        gtk_window.fullscreen_on_monitor(&screen, monitor);
+        let _ = window.show();
+        if monitor == 0 {
+            let _ = window.set_focus();
+        }
+    })
+}
+
+/// Elsewhere the window moves onto its monitor first; fullscreen then
+/// covers the monitor the window is on.
+#[cfg(not(target_os = "linux"))]
+fn show_overlay(
+    _app: &AppHandle,
+    window: WebviewWindow,
+    index: usize,
+    monitor: Option<&tauri::Monitor>,
+) -> tauri::Result<()> {
+    if let Some(m) = monitor {
+        window.set_position(*m.position())?;
+        window.set_size(*m.size())?;
+    }
+    window.set_fullscreen(true)?;
+    window.show()?;
+    if index == 0 {
+        window.set_focus()?;
     }
     Ok(())
 }
@@ -938,11 +1018,14 @@ struct SettingsView {
     settings: Settings,
     has_token: bool,
     insecure: bool,
+    /// True where the client registers its own keyboard shortcut.
+    shortcut_supported: bool,
+    shortcut_error: Option<String>,
     config_path: String,
     log_path: String,
 }
 
-async fn settings_view(settings: Settings) -> Result<SettingsView, String> {
+async fn settings_view(app: &AppHandle, settings: Settings) -> Result<SettingsView, String> {
     let has_token = if settings.is_configured() {
         let url = settings.server_url.clone();
         blocking(move || secret::token(&url))
@@ -959,6 +1042,8 @@ async fn settings_view(settings: Settings) -> Result<SettingsView, String> {
         |p: Option<std::path::PathBuf>| p.map_or_else(String::new, |p| p.display().to_string());
     Ok(SettingsView {
         insecure: config::is_insecure(&settings.server_url),
+        shortcut_supported: cfg!(windows),
+        shortcut_error: lock(&app.state::<AppState>().shortcut_error).clone(),
         settings,
         has_token,
         config_path: path(config::path()),
@@ -967,9 +1052,12 @@ async fn settings_view(settings: Settings) -> Result<SettingsView, String> {
 }
 
 #[tauri::command]
-async fn get_settings(state: tauri::State<'_, AppState>) -> Result<SettingsView, String> {
+async fn get_settings(
+    app: AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<SettingsView, String> {
     let settings = lock(&state.settings).clone();
-    settings_view(settings).await
+    settings_view(&app, settings).await
 }
 
 /// Saves the settings. `token` replaces the stored token when given; when
@@ -1016,7 +1104,7 @@ async fn save_settings(
     }
     config::save(&settings).map_err(|e| e.describe())?;
     report::note(format!(
-        "settings saved: server {}, {:?}, expiry {:?}, keep copy {}, autostart {}",
+        "settings saved: server {}, {:?}, expiry {:?}, keep copy {}, autostart {}, shortcut {:?}",
         if settings.is_configured() {
             "set"
         } else {
@@ -1025,11 +1113,14 @@ async fn save_settings(
         settings.visibility,
         settings.expires_in_days,
         settings.keep_copy,
-        settings.autostart
+        settings.autostart,
+        settings.shortcut
     ));
     *lock(&state.settings) = settings.clone();
     refresh_tray(&app);
-    settings_view(settings).await
+    #[cfg(windows)]
+    shortcut::apply(&app);
+    settings_view(&app, settings).await
 }
 
 /// Checks address and token with `GET /me`. Without a token in the form,
@@ -1058,14 +1149,17 @@ async fn test_connection(server_url: String, token: Option<String>) -> Result<St
 }
 
 #[tauri::command]
-async fn forget_token(state: tauri::State<'_, AppState>) -> Result<SettingsView, String> {
+async fn forget_token(
+    app: AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<SettingsView, String> {
     let settings = lock(&state.settings).clone();
     let url = settings.server_url.clone();
     blocking(move || secret::delete_token(&url))
         .await?
         .map_err(|_| t("error.keyring").to_owned())?;
     report::note("token removed");
-    settings_view(settings).await
+    settings_view(&app, settings).await
 }
 
 /// Lets the overlay and the editor add their own observations to the log.

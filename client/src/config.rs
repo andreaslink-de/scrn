@@ -1,6 +1,5 @@
-//! Client settings in `$XDG_CONFIG_HOME/scrn/config.json` (default
-//! `~/.config`). The API token is not stored here but in the system
-//! keyring (see [`crate::secret`]).
+//! Client settings in `config.json` (see [`crate::paths`]). The API token
+//! is not stored here but in the system keyring (see [`crate::secret`]).
 
 use std::path::{Path, PathBuf};
 
@@ -54,6 +53,11 @@ pub struct Settings {
     pub keep_copy: bool,
     /// Start the client with the desktop session.
     pub autostart: bool,
+    /// Keyboard shortcut for a screenshot, e.g. `PrintScreen` or
+    /// `Ctrl+Shift+S`; empty for none. Only used where the client
+    /// registers shortcuts itself (Windows); on Linux the desktop's own
+    /// shortcut settings call `scrn capture`.
+    pub shortcut: String,
 }
 
 impl Default for Settings {
@@ -64,9 +68,12 @@ impl Default for Settings {
             expires_in_days: None,
             keep_copy: false,
             autostart: false,
+            shortcut: DEFAULT_SHORTCUT.to_owned(),
         }
     }
 }
+
+pub const DEFAULT_SHORTCUT: &str = "PrintScreen";
 
 impl Settings {
     pub fn is_configured(&self) -> bool {
@@ -83,6 +90,7 @@ impl Settings {
         if self.expires_in_days.is_some_and(|d| d > MAX_EXPIRY_DAYS) {
             return Err(ConfigError::Expiry);
         }
+        self.shortcut = self.shortcut.trim().chars().take(64).collect();
         Ok(self)
     }
 }
@@ -119,15 +127,7 @@ pub fn is_insecure(server_url: &str) -> bool {
 }
 
 pub fn path() -> Option<PathBuf> {
-    base_dir("XDG_CONFIG_HOME", ".config").map(|d| d.join("scrn").join("config.json"))
-}
-
-/// `$<var>`, or `$HOME/<fallback>`.
-pub fn base_dir(var: &str, fallback: &str) -> Option<PathBuf> {
-    std::env::var_os(var)
-        .map(PathBuf::from)
-        .filter(|p| p.is_absolute())
-        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(fallback)))
+    crate::paths::config_file()
 }
 
 /// Loads the settings; a missing file gives the defaults.
@@ -252,6 +252,7 @@ pub(crate) mod tests {
             expires_in_days: Some(0),
             keep_copy: true,
             autostart: true,
+            shortcut: "Ctrl+Shift+S".into(),
         };
         save_to(&path, &settings).unwrap();
         assert_eq!(load_from(&path).unwrap(), settings);
@@ -260,6 +261,7 @@ pub(crate) mod tests {
         let old = load_from(&path).unwrap();
         assert_eq!(old.server_url, "https://a.example");
         assert_eq!(old.visibility, Visibility::Private);
+        assert_eq!(old.shortcut, DEFAULT_SHORTCUT);
         std::fs::remove_dir_all(dir).unwrap();
     }
 

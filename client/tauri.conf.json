@@ -44,6 +44,17 @@
       "appimage": {
         "bundleMediaFramework": false
       }
+    },
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "languages": [
+          "English",
+          "German"
+        ],
+        "displayLanguageSelector": false,
+        "installerIcon": "icons/icon.ico"
+      }
     }
   }
 }

@@ -1,9 +1,9 @@
 name: Client release
 
-# Builds the Linux packages of the desktop client (.deb and AppImage).
-# A tag client-v1.2.3 attaches them to a draft GitHub release of that tag,
-# which is published by hand. Started by hand (workflow_dispatch), the
-# packages are only kept as workflow artifacts.
+# Builds the packages of the desktop client: .deb and AppImage for Linux,
+# an NSIS installer for Windows. A tag client-v1.2.3 attaches them to a
+# draft GitHub release of that tag, which is published by hand. Started by
+# hand (workflow_dispatch), the packages are only kept as artifacts.
 
 on:
   push:
@@ -14,8 +14,23 @@ permissions:
   contents: write
 
 jobs:
+  version:
+    name: check the version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check that the tag matches the client version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          version="$(sed -n 's/^version = "\(.*\)"/\1/p' client/Cargo.toml | head -n1)"
+          if [ "client-v${version}" != "${GITHUB_REF_NAME}" ]; then
+            echo "tag ${GITHUB_REF_NAME} does not match client/Cargo.toml version ${version}" >&2
+            exit 1
+          fi
+
   linux:
     name: build .deb and AppImage
+    needs: version
     # The oldest supported runner: the AppImage then runs on systems with
     # this glibc or newer.
     runs-on: ubuntu-22.04
@@ -24,15 +39,6 @@ jobs:
         working-directory: client
     steps:
       - uses: actions/checkout@v7
-
-      - name: Check that the tag matches the client version
-        if: startsWith(github.ref, 'refs/tags/')
-        run: |
-          version="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n1)"
-          if [ "client-v${version}" != "${GITHUB_REF_NAME}" ]; then
-            echo "tag ${GITHUB_REF_NAME} does not match client/Cargo.toml version ${version}" >&2
-            exit 1
-          fi
 
       - name: Install system libraries for Tauri
         run: |
@@ -55,26 +61,68 @@ jobs:
       - name: Build the packages
         run: cargo tauri build --bundles deb,appimage
 
-      - name: Collect the packages
-        id: files
-        run: |
-          mkdir -p ../dist
-          cp target/release/bundle/deb/*.deb target/release/bundle/appimage/*.AppImage ../dist/
-          (cd ../dist && sha256sum * > SHA256SUMS)
-          ls -l ../dist
-
       - name: Keep the packages as artifact
         uses: actions/upload-artifact@v7
         with:
           name: scrn-client-linux
-          path: dist/
+          path: |
+            client/target/release/bundle/deb/*.deb
+            client/target/release/bundle/appimage/*.AppImage
+
+  windows:
+    name: build the Windows installer
+    needs: version
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: client
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: client
+
+      - name: Install the Tauri CLI
+        run: cargo install tauri-cli --version "~2.12.4" --locked
+
+      - name: Build the installer
+        run: cargo tauri build --bundles nsis
+
+      - name: Keep the installer as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: scrn-client-windows
+          path: client/target/release/bundle/nsis/*-setup.exe
+
+  release:
+    name: attach to a draft release
+    needs: [linux, windows]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch the packages
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
 
       - name: Attach the packages to a draft release
-        if: startsWith(github.ref, 'refs/tags/')
-        working-directory: dist
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          cd dist
+          # Artifacts keep their folders (deb/, appimage/); flatten them.
+          find . -mindepth 2 -type f -exec mv {} . \;
+          find . -mindepth 1 -type d -empty -delete
+          sha256sum * > SHA256SUMS
+          ls -l
           version="${GITHUB_REF_NAME#client-v}"
           # The section of this version from client/CHANGELOG.md.
           awk -v v="## [${version}]" 'index($0, v) == 1 {on=1; next} /^## \[/ {on=0} on' \

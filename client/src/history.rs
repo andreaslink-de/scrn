@@ -1,5 +1,5 @@
-//! The last uploads in `$XDG_STATE_HOME/scrn/history.json` (default
-//! `~/.local/state`), newest first.
+//! The last uploads in `history.json` (see [`crate::paths`]), newest
+//! first.
 
 use std::path::{Path, PathBuf};
 
@@ -22,7 +22,7 @@ pub struct Entry {
 }
 
 pub fn path() -> Option<PathBuf> {
-    config::base_dir("XDG_STATE_HOME", ".local/state").map(|d| d.join("scrn").join("history.json"))
+    crate::paths::history_file()
 }
 
 /// Loads the history; a missing or damaged file gives an empty one.

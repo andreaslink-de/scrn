@@ -1,7 +1,10 @@
 //! Desktop integration: clipboard, opening links, notifications and
 //! autostart.
 
-use std::path::{Path, PathBuf};
+#[cfg(any(target_os = "linux", test))]
+use std::path::Path;
+#[cfg(target_os = "linux")]
+use std::path::PathBuf;
 use std::sync::Mutex;
 
 use tauri::AppHandle;
@@ -18,7 +21,8 @@ static CLIPBOARD: Mutex<Option<arboard::Clipboard>> = Mutex::new(None);
 /// has the keyboard focus, and a tray app usually has none: GNOME drops
 /// such requests without an error. arboard owns the X11 clipboard through
 /// XWayland instead, which needs no focus, and GNOME passes it on to
-/// Wayland apps. If that fails, GTK is tried as before.
+/// Wayland apps. If that fails, GTK is tried as before. On Windows arboard
+/// uses the Win32 clipboard.
 pub fn copy_text(app: &AppHandle, text: String) {
     let copied = {
         let mut slot = CLIPBOARD
@@ -44,27 +48,55 @@ pub fn copy_text(app: &AppHandle, text: String) {
     if copied {
         return;
     }
-    let result = app.run_on_main_thread(move || {
-        let clipboard = gtk::Clipboard::get(&gtk::gdk::SELECTION_CLIPBOARD);
-        clipboard.set_text(&text);
-        clipboard.store();
-    });
-    if let Err(err) = result {
-        report::note(format!("copying to the clipboard failed: {err}"));
+    #[cfg(target_os = "linux")]
+    {
+        let result = app.run_on_main_thread(move || {
+            let clipboard = gtk::Clipboard::get(&gtk::gdk::SELECTION_CLIPBOARD);
+            clipboard.set_text(&text);
+            clipboard.store();
+        });
+        if let Err(err) = result {
+            report::note(format!("copying to the clipboard failed: {err}"));
+        }
     }
+    #[cfg(not(target_os = "linux"))]
+    let _ = app;
 }
 
-/// Opens `url` in the default browser.
+/// Opens `url` (http or https only) in the default browser.
 pub fn open_url(app: &AppHandle, url: String) {
-    let result = app.run_on_main_thread(move || {
-        if let Err(err) =
-            gtk::show_uri_on_window(None::<&gtk::Window>, &url, gtk::current_event_time())
-        {
+    if !(url.starts_with("https://") || url.starts_with("http://")) {
+        report::note("refused to open a link that is not http(s)");
+        return;
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let result = app.run_on_main_thread(move || {
+            if let Err(err) =
+                gtk::show_uri_on_window(None::<&gtk::Window>, &url, gtk::current_event_time())
+            {
+                report::note(format!("opening a link failed: {err}"));
+            }
+        });
+        if let Err(err) = result {
             report::note(format!("opening a link failed: {err}"));
         }
-    });
-    if let Err(err) = result {
-        report::note(format!("opening a link failed: {err}"));
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        /// No console window for the helper.
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        let _ = app;
+        // The URL handler of Windows; the URL is one argument, so no
+        // shell quoting is involved.
+        let result = std::process::Command::new("rundll32.exe")
+            .args(["url.dll,FileProtocolHandler", &url])
+            .creation_flags(CREATE_NO_WINDOW)
+            .spawn();
+        if let Err(err) = result {
+            report::note(format!("opening a link failed: {err}"));
+        }
     }
 }
 
@@ -72,29 +104,59 @@ pub fn open_url(app: &AppHandle, url: String) {
 pub fn notify(summary: &str, body: &str) {
     let mut notification = notify_rust::Notification::new();
     notification
-        .appname("SCRN")
         .summary(summary)
         .body(body)
-        .icon("scrn")
         .timeout(notify_rust::Timeout::Milliseconds(6000));
-    let notification = notification.clone();
-    tauri::async_runtime::spawn(async move {
-        if let Err(err) = notification.show_async().await {
-            report::note(format!("notification failed: {err}"));
-        }
-    });
+    #[cfg(target_os = "linux")]
+    {
+        notification.appname("SCRN").icon("scrn");
+        let notification = notification.clone();
+        tauri::async_runtime::spawn(async move {
+            if let Err(err) = notification.show_async().await {
+                report::note(format!("notification failed: {err}"));
+            }
+        });
+    }
+    #[cfg(windows)]
+    {
+        // The installer registers this ID with the Start menu shortcut, so
+        // the toast shows the SCRN name and icon.
+        notification.app_id(APP_ID);
+        let notification = notification.clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            if let Err(err) = notification.show() {
+                report::note(format!("notification failed: {err}"));
+            }
+        });
+    }
+}
+
+/// The identifier from `tauri.conf.json`, used as AppUserModelID.
+#[cfg(windows)]
+const APP_ID: &str = "de.andreaslink.scrn";
+
+/// True if the Windows taskbar uses the light theme, so the tray needs the
+/// dark icon.
+#[cfg(windows)]
+pub fn taskbar_is_light() -> bool {
+    windows_registry::CURRENT_USER
+        .open(r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize")
+        .and_then(|key| key.get_u32("SystemUsesLightTheme"))
+        .is_ok_and(|v| v != 0)
 }
 
 // --- Autostart ----------------------------------------------------------
 
 /// `$XDG_CONFIG_HOME/autostart/scrn.desktop`.
+#[cfg(target_os = "linux")]
 fn autostart_path() -> Option<PathBuf> {
-    crate::config::base_dir("XDG_CONFIG_HOME", ".config")
+    crate::paths::xdg("XDG_CONFIG_HOME", ".config")
         .map(|d| d.join("autostart").join("scrn.desktop"))
 }
 
 /// The program to start: the AppImage itself when running from one,
 /// otherwise this executable.
+#[cfg(target_os = "linux")]
 fn program() -> std::io::Result<PathBuf> {
     match std::env::var_os("APPIMAGE") {
         Some(path) if Path::new(&path).is_absolute() => Ok(PathBuf::from(path)),
@@ -103,6 +165,7 @@ fn program() -> std::io::Result<PathBuf> {
 }
 
 /// Turns autostart on or off.
+#[cfg(target_os = "linux")]
 pub fn set_autostart(enabled: bool) -> std::io::Result<()> {
     let path = autostart_path().ok_or_else(|| std::io::Error::other("no home directory"))?;
     if !enabled {
@@ -120,6 +183,7 @@ pub fn set_autostart(enabled: bool) -> std::io::Result<()> {
 }
 
 /// A desktop entry that starts `program` in the tray.
+#[cfg(any(target_os = "linux", test))]
 fn desktop_entry(program: &Path) -> Option<String> {
     let program = program.to_str()?;
     if program.contains(['\n', '\r']) {
@@ -152,12 +216,43 @@ fn desktop_entry(program: &Path) -> Option<String> {
     ))
 }
 
+/// The key whose values Windows starts at login.
+#[cfg(windows)]
+const RUN_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Run";
+
+/// Turns autostart on or off through the Run key of the current user.
+#[cfg(windows)]
+pub fn set_autostart(enabled: bool) -> std::io::Result<()> {
+    let key = windows_registry::CURRENT_USER
+        .create(RUN_KEY)
+        .map_err(std::io::Error::other)?;
+    if enabled {
+        let program = std::env::current_exe()?;
+        let value = format!("\"{}\"", program.display());
+        key.set_string("SCRN", value).map_err(std::io::Error::other)
+    } else {
+        // Not there: nothing to remove.
+        if key.get_type("SCRN").is_err() {
+            return Ok(());
+        }
+        key.remove_value("SCRN").map_err(std::io::Error::other)
+    }
+}
+
+#[cfg(not(any(target_os = "linux", windows)))]
+pub fn set_autostart(_enabled: bool) -> std::io::Result<()> {
+    Err(std::io::Error::other(
+        "autostart is not supported on this system yet",
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     /// Needs a desktop session: `cargo test -- --ignored`. A second
     /// clipboard client reads what the first one owns.
+    #[cfg(target_os = "linux")]
     #[test]
     #[ignore = "needs a desktop session"]
     fn copied_text_can_be_pasted_elsewhere() {
