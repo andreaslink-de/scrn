@@ -15,6 +15,9 @@ format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - KDE Plasma, Sway and Hyprland: screenshots through their portals, and
   through `grim` on wlroots compositors whose portal cannot take them.
   The README lists what each desktop needs and how to bind a shortcut.
+- The version is shown in the tray menu (*Über SCRN*), at the bottom of
+  the settings and by `scrn --version`, together with links to the
+  project on GitHub and to scrn.dev.
 - Keyboard shortcuts through the GlobalShortcuts portal where the desktop
   offers it (KDE Plasma, Hyprland, GNOME 48 or newer): *capture* with
   Print suggested, and *copy-last*.

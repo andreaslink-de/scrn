@@ -76,13 +76,20 @@ fn lock<T>(slot: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
         .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
-const USAGE: &str = "usage: scrn [capture | copy-last]
+const USAGE: &str = "usage: scrn [capture | copy-last | --version]
 
   scrn             start the tray icon
   scrn capture     take a screenshot and select an area
   scrn copy-last   copy the link of the last upload
+  scrn --version   print the version
 
 Both commands hand over to the running instance, if there is one.";
+
+/// The version of the client, as in Cargo.toml.
+const VERSION: &str = env!("CARGO_PKG_VERSION");
+/// Where the source lives, and the project's website.
+const PROJECT_URL: &str = "https://github.com/andreaslink-de/scrn";
+const WEBSITE_URL: &str = "https://scrn.dev";
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Command {
@@ -115,6 +122,10 @@ fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.first().is_some_and(|a| a == "-h" || a == "--help") {
         println!("{USAGE}");
+        return;
+    }
+    if args.first().is_some_and(|a| a == "-V" || a == "--version") {
+        println!("scrn {VERSION}");
         return;
     }
     let Some(command) = parse_command(args.first().map(String::as_str)) else {
@@ -162,6 +173,7 @@ fn main() {
             test_connection,
             forget_token,
             allow_screenshots,
+            open_project,
             note
         ])
         .setup(move |app| {
@@ -267,6 +279,23 @@ fn tray_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
             None::<&str>,
         )?)?;
     }
+    let about = Submenu::with_id_and_items(
+        app,
+        "about",
+        t("tray.about"),
+        true,
+        &[
+            &MenuItem::with_id(
+                app,
+                "version",
+                format!("SCRN {VERSION}"),
+                false,
+                None::<&str>,
+            )?,
+            &item("project", "tray.project", true)?,
+            &MenuItem::with_id(app, "website", "scrn.dev", true, None::<&str>)?,
+        ],
+    )?;
     Menu::with_items(
         app,
         &[
@@ -280,6 +309,7 @@ fn tray_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
             &item("gallery", "tray.gallery", configured)?,
             &PredefinedMenuItem::separator(app)?,
             &item("settings", "tray.settings", true)?,
+            &about,
             &item("quit", "tray.quit", true)?,
         ],
     )
@@ -336,6 +366,8 @@ fn on_menu(app: &AppHandle, id: &str) {
                 desktop::open_url(app, format!("{base}/app"));
             }
         }
+        "project" => desktop::open_url(app, PROJECT_URL.to_owned()),
+        "website" => desktop::open_url(app, WEBSITE_URL.to_owned()),
         "settings" => {
             if let Err(err) = open_settings(app) {
                 report::note(format!("opening the settings failed: {err}"));
@@ -1028,6 +1060,7 @@ struct SettingsView {
     /// True where the client registers its own keyboard shortcut.
     shortcut_supported: bool,
     shortcut_error: Option<String>,
+    version: &'static str,
     config_path: String,
     log_path: String,
 }
@@ -1051,11 +1084,25 @@ async fn settings_view(app: &AppHandle, settings: Settings) -> Result<SettingsVi
         insecure: config::is_insecure(&settings.server_url),
         shortcut_supported: cfg!(windows),
         shortcut_error: lock(&app.state::<AppState>().shortcut_error).clone(),
+        version: VERSION,
         settings,
         has_token,
         config_path: path(config::path()),
         log_path: path(report::path()),
     })
+}
+
+/// Opens the project page (`github`) or the website (`website`) from the
+/// settings window. Only these two, so the webview cannot open any URL.
+#[tauri::command]
+fn open_project(app: AppHandle, page: String) -> Result<(), String> {
+    let url = match page.as_str() {
+        "github" => PROJECT_URL,
+        "website" => WEBSITE_URL,
+        _ => return Err("unknown page".into()),
+    };
+    desktop::open_url(&app, url.to_owned());
+    Ok(())
 }
 
 #[tauri::command]
