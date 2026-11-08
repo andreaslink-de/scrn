@@ -30,7 +30,7 @@ serde_json = "1"
 tauri = { version = "2.12.5", features = ["tray-icon", "image-png"] }
 tauri-plugin-single-instance = "2.5.5"
 thiserror = "2.0.21"
-tokio = { version = "1.54.1", features = ["fs", "time"] }
+tokio = { version = "1.54.1", features = ["fs", "process", "time"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 # Screenshot portal (xdg-desktop-portal) over D-Bus, pure Rust.

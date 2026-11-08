@@ -15,8 +15,8 @@ blur sensitive details (Redact) and add arrows or highlights (Note). The finishe
 image is uploaded to your own server and can be shared through a short link.
 
 > **Status:** server 0.4.0, desktop client 0.1.1 for Linux (GNOME on
-> Wayland); Windows support is in testing. More Linux desktops and macOS
-> follow (see [docs/PLAN.md](docs/PLAN.md)).
+> Wayland); Windows, KDE Plasma, Sway and Hyprland are in testing. macOS
+> follows (see [docs/PLAN.md](docs/PLAN.md)).
 
 ## Components
 

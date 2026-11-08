@@ -19,6 +19,8 @@ mod paths;
 mod permission;
 mod report;
 mod secret;
+#[cfg(target_os = "linux")]
+mod session;
 #[cfg(windows)]
 mod shortcut;
 
@@ -600,6 +602,7 @@ async fn capture_failed(app: &AppHandle, err: &capture::CaptureError) {
     }
     #[cfg(target_os = "linux")]
     if err.is_portal()
+        && session::Desktop::current().has_permission_store()
         && let Some(id) = permission::app_id()
     {
         let status = permission::status(&id).await;

@@ -1,7 +1,8 @@
 //! Screen capture and cropping of the selection. Linux asks the screenshot
-//! portal; Windows captures every monitor with xcap and puts the images
-//! together. Either way the result covers the bounding box of all
-//! monitors in physical pixels.
+//! portal, or `grim` on wlroots compositors whose portal cannot; Windows
+//! captures every monitor with xcap and puts the images together. Either
+//! way the result covers the bounding box of all monitors in physical
+//! pixels.
 
 use std::path::PathBuf;
 
@@ -13,6 +14,9 @@ pub enum CaptureError {
     #[cfg(any(not(target_os = "linux"), test))]
     #[error("screen capture: {0}")]
     Screen(String),
+    #[cfg(target_os = "linux")]
+    #[error("grim failed: {0}")]
+    Grim(String),
     #[cfg(target_os = "linux")]
     #[error("the portal returned a URI that is no local file: {0}")]
     NotAFile(String),
@@ -56,8 +60,28 @@ pub struct Capture {
 }
 
 /// Captures all screens. Returns the capture and a note for the log.
+/// Asks the portal first; on wlroots compositors whose portal cannot take
+/// screenshots (Hyprland, for one), `grim` fills in.
 #[cfg(target_os = "linux")]
 pub async fn take() -> Result<(Capture, String), CaptureError> {
+    let err = match portal().await {
+        Ok(result) => return Ok(result),
+        Err(err) => err,
+    };
+    if err.is_cancelled() || !crate::session::Desktop::current().may_use_grim() {
+        return Err(err);
+    }
+    match grim().await {
+        Ok(result) => Ok(result),
+        Err(grim_err) => {
+            crate::report::note(format!("grim after the portal failed: {grim_err}"));
+            Err(err)
+        }
+    }
+}
+
+#[cfg(target_os = "linux")]
+async fn portal() -> Result<(Capture, String), CaptureError> {
     use ashpd::desktop::screenshot::Screenshot;
     // The portal of GNOME shows no dialog with interactive=false.
     let response = Screenshot::request()
@@ -75,6 +99,29 @@ pub async fn take() -> Result<(Capture, String), CaptureError> {
     let (width, height) = dimensions(&png)?;
     let note = format!("portal, file {} (removed)", path.display());
     Ok((Capture { png, width, height }, note))
+}
+
+/// All outputs through `grim`, which writes the PNG to stdout. It covers
+/// the bounding box of the layout at the highest output scale, like the
+/// portal image.
+#[cfg(target_os = "linux")]
+async fn grim() -> Result<(Capture, String), CaptureError> {
+    let output = tokio::process::Command::new("grim")
+        .args(["-t", "png", "-"])
+        .kill_on_drop(true)
+        .output()
+        .await?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(CaptureError::Grim(format!(
+            "{}: {}",
+            output.status,
+            stderr.trim()
+        )));
+    }
+    let png = output.stdout;
+    let (width, height) = dimensions(&png)?;
+    Ok((Capture { png, width, height }, "grim".to_owned()))
 }
 
 /// Captures all screens. Returns the capture and a note for the log.
