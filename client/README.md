@@ -1,7 +1,8 @@
 # SCRN desktop client
 
-Runs on Linux (tested on Ubuntu 24.04 with GNOME on Wayland) and on
-Windows 10/11. More Linux desktops and macOS follow (see `docs/PLAN.md`).
+Runs on Linux (tested on Ubuntu 24.04 with GNOME on Wayland; KDE Plasma,
+Sway and Hyprland are in testing, see [Linux desktops](#linux-desktops))
+and on Windows 10/11. macOS follows (see `docs/PLAN.md`).
 
 ## Install
 
@@ -25,6 +26,29 @@ path followed by `capture`. On Windows the client registers the shortcut
 itself: Print Screen by default, changeable in the settings. Windows 11
 opens its own screen capture on Print Screen; turn that off under
 *Settings → Accessibility → Keyboard*.
+
+## Linux desktops
+
+The client takes screenshots through the screenshot portal
+(xdg-desktop-portal) and needs a tray (StatusNotifierItem) and a Secret
+Service keyring for the token.
+
+| Desktop | Screenshot | Tray | Keyring |
+|---------|------------|------|---------|
+| GNOME | `xdg-desktop-portal-gnome`; asks once for the permission | AppIndicator extension (preinstalled on Ubuntu) | GNOME Keyring |
+| KDE Plasma | `xdg-desktop-portal-kde` | built in | KWallet |
+| Sway | `xdg-desktop-portal-wlr`, or `grim` | a bar with tray, e.g. Waybar's `tray` module | GNOME Keyring or KeePassXC |
+| Hyprland | `grim` (its portal has no screenshots) | Waybar's `tray` module | GNOME Keyring or KeePassXC |
+
+On wlroots compositors (Sway, Hyprland and similar) the client runs
+`grim` when the portal cannot take the screenshot, so install `grim`
+there. For a keyboard shortcut, bind `scrn capture`:
+
+- **KDE Plasma:** *System Settings → Keyboard → Shortcuts → Add New →
+  Command or Script*, command `scrn capture`.
+- **Sway** (`~/.config/sway/config`): `bindsym Print exec scrn capture`
+- **Hyprland** (`~/.config/hypr/hyprland.conf`):
+  `bind = , Print, exec, scrn capture`
 
 ## Build packages
 
@@ -55,7 +79,8 @@ cargo run -- copy-last # copy the link of the last upload
 1. Create an API token in the web UI under *Einstellungen → API-Tokens*.
 2. Tray menu → *Einstellungen …*: enter the server address and the
    token, *Verbindung testen*, then *Speichern*. The token goes to the
-   system keyring (GNOME Keyring), never into a file.
+   system keyring (GNOME Keyring, KWallet or another Secret Service),
+   never into a file.
 3. Choose the visibility of new uploads (private by default), the
    expiry of public links and whether the client starts on login.
 
@@ -66,8 +91,8 @@ in the GNOME Keyring or the Windows Credential Manager.
 
 ## Use
 
-1. *Screenshot aufnehmen* in the tray menu, or `scrn capture`. The first
-   capture asks for the screenshot permission.
+1. *Screenshot aufnehmen* in the tray menu, or `scrn capture`. On GNOME
+   the first capture asks for the screenshot permission.
 2. Every monitor shows the frozen screen. Drag a rectangle; Esc cancels.
 3. The editor opens with the selected area:
 

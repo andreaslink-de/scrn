@@ -12,6 +12,14 @@ format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   global shortcut, autostart through the Run key of the user, tray icon
   matching the taskbar theme, and an NSIS installer for the current user
   (no administrator rights).
+- KDE Plasma, Sway and Hyprland: screenshots through their portals, and
+  through `grim` on wlroots compositors whose portal cannot take them.
+  The README lists what each desktop needs and how to bind a shortcut.
+
+### Changed
+
+- The permission window appears on GNOME only; it is the only desktop
+  that keeps the screenshot permission in the permission store.
 
 ## [0.1.1] - 2026-11-07
 
