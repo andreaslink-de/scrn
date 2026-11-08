@@ -218,6 +218,22 @@ pub async fn announce_setup_token(state: &AppState) -> Result<(), ServerError> {
 }
 
 /// Builds the application router.
+/// `scrn-server reset-link <username>`: a password reset link for a user,
+/// or `None` if there is no such user.
+pub async fn issue_cli_reset_link(
+    db: &sqlx::SqlitePool,
+    config: &Config,
+    username: &str,
+    now: i64,
+) -> Result<Option<String>, error::AppError> {
+    let Some(user) = repo::users::get_by_username(db, username.trim()).await? else {
+        return Ok(None);
+    };
+    auth::issue_reset_link(db, &config.base_url, user.id, None, now)
+        .await
+        .map(Some)
+}
+
 pub fn app(state: AppState) -> axum::Router {
     routes::router(state)
 }

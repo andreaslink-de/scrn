@@ -1,4 +1,5 @@
-//! Administration: invitations, user accounts and the backup download.
+//! Administration: invitations, user accounts, password reset links and
+//! the backup download.
 
 use std::collections::HashMap;
 
@@ -11,7 +12,7 @@ use axum::response::{IntoResponse, Redirect, Response};
 use serde::Deserialize;
 
 use crate::AppState;
-use crate::auth::{AdminUser, CurrentUser};
+use crate::auth::{self, AdminUser, CurrentUser};
 use crate::backup;
 use crate::crypto::SecretToken;
 use crate::error::AppError;
@@ -29,6 +30,8 @@ struct AdminPage {
     page: Page,
     csrf: String,
     invite_link: Option<String>,
+    /// A new reset link: the label above it and the link.
+    reset_link: Option<(String, String)>,
     error: Option<String>,
     default_days: i64,
     default_quota: String,
@@ -82,6 +85,7 @@ pub struct InviteForm {
 enum Notice {
     None,
     InviteLink(String),
+    ResetLink { username: String, link: String },
     Error(&'static str),
 }
 
@@ -146,6 +150,33 @@ pub async fn delete_invite(
         tracing::info!(invite_id = id, "invitation revoked");
     }
     Ok(Redirect::to("/admin").into_response())
+}
+
+/// Creates a single-use link that sets a new password for a user. Shown
+/// once, like an invitation link; an older link of the user stops working.
+pub async fn create_reset_link(
+    State(state): State<AppState>,
+    AdminUser(admin): AdminUser,
+    Path(id): Path<i64>,
+    Form(form): Form<CsrfForm>,
+) -> Result<Response, AppError> {
+    admin.verify_csrf(&form.csrf)?;
+    let Some(user) = users::get_by_id(&state.db, id).await? else {
+        return Err(AppError::NotFound);
+    };
+    let link = auth::issue_reset_link(
+        &state.db,
+        &state.config.base_url,
+        user.id,
+        Some(admin.user.id),
+        state.clock.now(),
+    )
+    .await?;
+    let notice = Notice::ResetLink {
+        username: user.username,
+        link,
+    };
+    render(&state, &admin, notice, StatusCode::OK).await
 }
 
 pub async fn disable_user(
@@ -332,11 +363,17 @@ async fn render(
         })
         .collect();
 
-    let (invite_link, error) = match notice {
-        Notice::None => (None, None),
-        Notice::InviteLink(link) => (Some(link), None),
-        Notice::Error(key) => (None, Some(i18n::catalogs().t(lang, key).to_owned())),
-    };
+    let (mut invite_link, mut reset_link, mut error) = (None, None, None);
+    match notice {
+        Notice::None => {}
+        Notice::InviteLink(link) => invite_link = Some(link),
+        Notice::ResetLink { username, link } => {
+            let label =
+                i18n::catalogs().tf(lang, "admin.reset.created", &[("username", &username)]);
+            reset_link = Some((label, link));
+        }
+        Notice::Error(key) => error = Some(i18n::catalogs().t(lang, key).to_owned()),
+    }
     let default_quota = if default_quota_bytes == 0 {
         i18n::catalogs().t(lang, "storage.unlimited").to_owned()
     } else {
@@ -348,6 +385,7 @@ async fn render(
             page: Page::user(admin, "admin.title", "/admin"),
             csrf: admin.csrf.clone(),
             invite_link,
+            reset_link,
             error,
             default_days: DEFAULT_INVITE_DAYS,
             default_quota,

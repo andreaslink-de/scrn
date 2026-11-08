@@ -30,7 +30,7 @@
 </select>
 <small id="expiry-hint" class="hint">{{ page.t("settings.expiry_hint") }}</small>
 </div>
-<div class="field">
+<div class="field expiry-custom">
 <label for="custom_days">{{ page.t("settings.custom_days") }}</label>
 <input id="custom_days" name="custom_days" type="number" class="short" min="1" max="3650" value="{{ custom_days }}">
 </div>
@@ -43,8 +43,47 @@
 {% include "usage.html" %}
 </section>
 
+<section class="card" id="password" aria-labelledby="password-title">
+<h2 id="password-title">{{ page.t("password.title") }}</h2>
+{% if let Some(key) = password_notice %}<p class="notice" role="status">{{ page.t(key) }}</p>{% endif %}
+{% if let Some(error) = password_error %}<p class="alert" role="alert">{{ error }}</p>{% endif %}
+<p class="muted">{% if has_password %}{{ page.t("password.intro") }}{% else %}{{ page.t("password.intro_none") }}{% endif %}</p>
+<form method="post" action="/app/settings/password">
+<input type="hidden" name="csrf" value="{{ csrf }}">
+<div class="field">
+<label for="password-username">{{ page.t("field.username") }}</label>
+<input id="password-username" name="username" type="text" class="short" value="{{ username }}" autocomplete="username" readonly>
+</div>
+{% if has_password && !passkey_confirmed %}
+<div class="field">
+<label for="current_password">{{ page.t("password.current") }}</label>
+<input id="current_password" name="current_password" type="password" autocomplete="current-password" required>
+{% if passkeys_enabled && !passkeys.is_empty() %}<small class="hint">{{ page.t("password.forgot_hint") }}</small>{% endif %}
+</div>
+{% endif %}
+<div class="field">
+<label for="new_password">{{ page.t("password.new") }}</label>
+<input id="new_password" name="password" type="password" autocomplete="new-password" minlength="{{ min_password }}" required aria-describedby="new-password-hint">
+<small id="new-password-hint" class="hint">{{ page.tf("field.password_hint", "min", min_password.to_string().as_str()) }}</small>
+</div>
+<div class="field">
+<label for="new_password_confirm">{{ page.t("field.password_confirm") }}</label>
+<input id="new_password_confirm" name="password_confirm" type="password" autocomplete="new-password" minlength="{{ min_password }}" required>
+</div>
+<button type="submit">{{ page.t("password.save") }}</button>
+</form>
+{% if has_password && !passkey_confirmed && passkeys_enabled && !passkeys.is_empty() %}
+<div class="passkey-confirm" data-passkey-confirm data-csrf="{{ csrf }}" data-unsupported="{{ page.t("passkey.unsupported") }}" data-cancelled="{{ page.t("passkey.cancelled") }}">
+<p class="divider"><span>{{ page.t("login.or") }}</span></p>
+<button type="button" class="secondary" data-passkey-confirm-button>{{ page.t("password.confirm_passkey") }}</button>
+<p class="alert" role="alert" data-passkey-message hidden></p>
+</div>
+{% endif %}
+</section>
+
 <section class="card" id="passkeys" aria-labelledby="passkeys-title">
 <h2 id="passkeys-title">{{ page.t("passkey.title") }}</h2>
+{% if welcome && passkeys_enabled && passkeys.is_empty() %}<p class="notice" role="status">{{ page.t("passkey.welcome") }}</p>{% endif %}
 {% if passkey_added %}<p class="notice" role="status">{{ page.t("passkey.added") }}</p>{% endif %}
 {% if let Some(error) = passkey_error %}<p class="alert" role="alert">{{ error }}</p>{% endif %}
 {% if passkeys_enabled %}
@@ -87,6 +126,41 @@
 {% endif %}
 </section>
 
+<section class="card" id="groups" aria-labelledby="groups-title">
+<h2 id="groups-title">{{ page.t("groups.title") }}</h2>
+<p class="muted">{{ page.t("groups.intro") }}</p>
+{% if let Some(error) = group_error %}<p class="alert" role="alert">{{ error }}</p>{% endif %}
+<form class="inline-form" method="post" action="/app/groups">
+<input type="hidden" name="csrf" value="{{ csrf }}">
+<div class="field">
+<label for="group-name">{{ page.t("groups.name") }}</label>
+<input id="group-name" name="name" type="text" maxlength="50" value="{{ group_name }}" autocomplete="off" required>
+</div>
+<button type="submit">{{ page.t("groups.create") }}</button>
+</form>
+<div class="table-wrap">
+<table class="stack">
+<thead><tr><th scope="col">{{ page.t("tokens.col.name") }}</th><th scope="col">{{ page.t("groups.col.tokens") }}</th><th scope="col">{{ page.t("admin.col.actions") }}</th></tr></thead>
+<tbody>
+{% for group in groups %}
+<tr>
+<td data-label="{{ page.t("tokens.col.name") }}">
+<form class="inline-form" method="post" action="/app/groups/{{ group.id }}/rename">
+<input type="hidden" name="csrf" value="{{ csrf }}">
+<label for="group-{{ group.id }}" class="visually-hidden">{{ page.t("groups.name") }}</label>
+<input id="group-{{ group.id }}" name="name" type="text" class="short" maxlength="50" value="{{ group.name }}" required>
+<button type="submit" class="secondary small">{{ page.t("passkey.rename") }}</button>
+</form>
+</td>
+<td data-label="{{ page.t("groups.col.tokens") }}">{{ group.tokens }}</td>
+<td data-label="{{ page.t("admin.col.actions") }}">{% if group.is_default %}<span class="muted">{{ page.t("groups.is_default") }}</span>{% else %}<form method="post" action="/app/groups/{{ group.id }}/delete"><input type="hidden" name="csrf" value="{{ csrf }}"><button type="submit" class="danger small" title="{{ page.t("groups.delete_hint") }}">{{ page.t("groups.delete") }}</button></form>{% endif %}</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+</section>
+
 <section class="card" id="tokens" aria-labelledby="tokens-title">
 <h2 id="tokens-title">{{ page.t("tokens.title") }}</h2>
 <p class="muted">{{ page.t("tokens.intro") }}</p>
@@ -103,6 +177,14 @@
 <label for="token-name">{{ page.t("tokens.name") }}</label>
 <input id="token-name" name="name" type="text" maxlength="100" value="{{ token_name }}" autocomplete="off" required>
 </div>
+{% if groups.len() >= 2 %}
+<div class="field">
+<label for="token-group">{{ page.t("groups.group") }}</label>
+<select id="token-group" name="group" class="short">
+{% for group in groups %}<option value="{{ group.id }}"{% if group.is_default %} selected{% endif %}>{{ group.name }}</option>
+{% endfor %}</select>
+</div>
+{% endif %}
 <button type="submit">{{ page.t("tokens.create") }}</button>
 </form>
 {% if tokens.is_empty() %}
@@ -110,11 +192,21 @@
 {% else %}
 <div class="table-wrap">
 <table class="stack">
-<thead><tr><th scope="col">{{ page.t("tokens.col.name") }}</th><th scope="col">{{ page.t("admin.col.created") }}</th><th scope="col">{{ page.t("tokens.col.last_used") }}</th><th scope="col">{{ page.t("admin.col.status") }}</th><th scope="col">{{ page.t("admin.col.actions") }}</th></tr></thead>
+<thead><tr><th scope="col">{{ page.t("tokens.col.name") }}</th>{% if groups.len() >= 2 %}<th scope="col">{{ page.t("groups.group") }}</th>{% endif %}<th scope="col">{{ page.t("admin.col.created") }}</th><th scope="col">{{ page.t("tokens.col.last_used") }}</th><th scope="col">{{ page.t("admin.col.status") }}</th><th scope="col">{{ page.t("admin.col.actions") }}</th></tr></thead>
 <tbody>
 {% for token in tokens %}
 <tr>
 <td data-label="{{ page.t("tokens.col.name") }}">{{ token.name }}</td>
+{% if groups.len() >= 2 %}<td data-label="{{ page.t("groups.group") }}">
+<form class="inline-form" method="post" action="/app/tokens/{{ token.id }}/group">
+<input type="hidden" name="csrf" value="{{ csrf }}">
+<label for="token-group-{{ token.id }}" class="visually-hidden">{{ page.t("groups.group") }}</label>
+<select id="token-group-{{ token.id }}" name="group" class="short">
+{% for group in groups %}<option value="{{ group.id }}"{% if group.id == token.group_id %} selected{% endif %}>{{ group.name }}</option>
+{% endfor %}</select>
+<button type="submit" class="secondary small">{{ page.t("groups.assign") }}</button>
+</form>
+</td>{% endif %}
 <td data-label="{{ page.t("admin.col.created") }}"><time datetime="{{ page.iso(token.created_at) }}">{{ page.time(token.created_at) }}</time></td>
 <td data-label="{{ page.t("tokens.col.last_used") }}">{% match token.last_used_at %}{% when Some(at) %}<time datetime="{{ page.iso(at) }}">{{ page.time(at) }}</time>{% when None %}{{ page.t("tokens.never") }}{% endmatch %}</td>
 <td data-label="{{ page.t("admin.col.status") }}">{% if token.revoked_at.is_some() %}{{ page.t("status.revoked") }}{% else %}{{ page.t("status.active") }}{% endif %}</td>

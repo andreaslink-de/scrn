@@ -6,6 +6,41 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-07
+
+### Added
+
+- Change the password under *Settings → Password*. Instead of the current
+  password, a passkey works too: a passkey login or *Confirm with passkey*
+  replaces it for 10 minutes. Other sessions of the account end.
+- Password reset links: an admin creates one per user on the
+  administration page. It is shown once, works once within 24 hours and
+  ends all sessions of the account.
+- `scrn-server reset-link <username>` prints a reset link on the command
+  line, so an admin who lost their password gets back in
+  (`docker compose exec scrn scrn-server reset-link admin`).
+- After the setup and after registering through an invitation, the
+  settings page suggests adding a passkey.
+- Device groups such as *Work* or *Home* under *Settings → Device
+  groups*. Every API token belongs to one group and can be moved later;
+  groups can be renamed and deleted (their tokens move to the default
+  group). Screenshots belong to the group of the token that uploaded
+  them. With two or more groups the gallery filters by group.
+
+### Changed
+
+- The setup token field is a plain text field marked as one-time code, so
+  password managers no longer offer to store the token as the admin
+  password.
+- `reset` is a reserved short ID prefix.
+- English is the default language when neither the account, a cookie nor
+  the browser asks for one. Existing accounts keep their setting.
+- The custom days field in the settings and the date field on a
+  screenshot only show while the custom option is chosen.
+- Short links in the gallery are no longer underlined; the account name
+  in the header and the version in the footer stand apart from the
+  links and the description next to them.
+
 ## [0.3.0] - 2026-11-06
 
 ### Added
@@ -71,6 +106,8 @@ First release of the SCRN server.
 - Consistent backups while the server keeps running: a download in the
   administration, `scripts/backup.sh` and `scrn-server backup`.
 
-[Unreleased]: https://github.com/andreaslink-de/scrn/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/andreaslink-de/scrn/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/andreaslink-de/scrn/compare/v0.3.0...v0.4.0
+[0.3.0]: https://github.com/andreaslink-de/scrn/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/andreaslink-de/scrn/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/andreaslink-de/scrn/releases/tag/v0.1.0

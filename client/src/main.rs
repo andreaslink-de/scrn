@@ -15,6 +15,8 @@ mod desktop;
 mod history;
 mod i18n;
 mod paths;
+#[cfg(target_os = "linux")]
+mod permission;
 mod report;
 mod secret;
 #[cfg(windows)]
@@ -44,6 +46,9 @@ const EDITOR: &str = "editor";
 
 /// The settings window.
 const SETTINGS: &str = "settings";
+/// Label of the window that asks for the screenshot permission.
+#[cfg(target_os = "linux")]
+const PERMISSION: &str = "permission";
 
 /// Toolbar height and margins of the editor window in logical pixels.
 const EDITOR_CHROME: (f64, f64) = (32.0, 96.0);
@@ -152,6 +157,7 @@ fn main() {
             save_settings,
             test_connection,
             forget_token,
+            allow_screenshots,
             note
         ])
         .setup(move |app| {
@@ -556,8 +562,8 @@ fn start_capture(app: &AppHandle, source: &'static str) {
     }
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
-        if source == "tray menu" {
-            // Otherwise the closing menu ends up in the screenshot.
+        if matches!(source, "tray menu" | "permission window") {
+            // Otherwise the closing menu or window ends up in the screenshot.
             tokio::time::sleep(MENU_CLOSE_DELAY).await;
         }
         let started = std::time::Instant::now();
@@ -576,9 +582,78 @@ fn start_capture(app: &AppHandle, source: &'static str) {
                     close_overlays(&app);
                 }
             }
-            Err(err) => report::note(format!("capture failed: {err}")),
+            Err(err) => {
+                report::note(format!("capture failed: {err}"));
+                capture_failed(&app, &err).await;
+            }
         }
     });
+}
+
+/// Explains a failed capture. A refusal of the portal while the client runs
+/// as an app without the stored permission opens the permission window;
+/// anything else becomes a notification.
+async fn capture_failed(app: &AppHandle, err: &capture::CaptureError) {
+    #[cfg(target_os = "linux")]
+    if err.is_cancelled() {
+        return;
+    }
+    #[cfg(target_os = "linux")]
+    if err.is_portal()
+        && let Some(id) = permission::app_id()
+    {
+        let status = permission::status(&id).await;
+        report::note(format!("screenshot permission of app {id}: {status:?}"));
+        if status != permission::Permission::Granted {
+            if let Err(err) = open_permission(app) {
+                report::note(format!("opening the permission window failed: {err}"));
+            }
+            return;
+        }
+    }
+    #[cfg(not(target_os = "linux"))]
+    let _ = app;
+    desktop::notify(t("notify.capture_failed"), &err.to_string());
+}
+
+#[cfg(target_os = "linux")]
+fn open_permission(app: &AppHandle) -> tauri::Result<()> {
+    if let Some(window) = app.get_webview_window(PERMISSION) {
+        return window.set_focus();
+    }
+    WebviewWindowBuilder::new(app, PERMISSION, WebviewUrl::App("permission.html".into()))
+        .title("SCRN")
+        .inner_size(480.0, 360.0)
+        .resizable(false)
+        .center()
+        .focused(true)
+        .build()?;
+    Ok(())
+}
+
+/// Stores the screenshot permission after the user agreed in the
+/// permission window, then takes the screenshot that failed.
+#[tauri::command]
+#[cfg(target_os = "linux")]
+async fn allow_screenshots(app: AppHandle) -> Result<(), String> {
+    let id = permission::app_id().ok_or_else(|| t("permission.no_app").to_owned())?;
+    permission::grant(&id).await.map_err(|err| {
+        report::note(format!("storing the screenshot permission failed: {err}"));
+        err.to_string()
+    })?;
+    report::note(format!("screenshot permission stored for app {id}"));
+    if let Some(window) = app.get_webview_window(PERMISSION) {
+        let _ = window.close();
+    }
+    start_capture(&app, "permission window");
+    Ok(())
+}
+
+/// Only Linux asks for a stored screenshot permission.
+#[tauri::command]
+#[cfg(not(target_os = "linux"))]
+fn allow_screenshots() -> Result<(), String> {
+    Err("not needed on this system".into())
 }
 
 /// Opens one overlay per monitor, each fullscreen on its own monitor.

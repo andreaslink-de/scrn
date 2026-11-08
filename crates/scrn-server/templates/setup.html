@@ -7,7 +7,7 @@
 <input type="hidden" name="csrf" value="{{ csrf }}">
 <div class="field">
 <label for="setup_token">{{ page.t("setup.token") }}</label>
-<input id="setup_token" name="setup_token" type="password" autocomplete="off" required>
+<input id="setup_token" name="setup_token" type="text" autocomplete="one-time-code" spellcheck="false" autocapitalize="off" required>
 </div>
 {% include "account_fields.html" %}
 <button type="submit">{{ page.t("setup.submit") }}</button>

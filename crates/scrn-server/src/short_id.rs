@@ -21,6 +21,7 @@ pub const RESERVED_PREFIXES: &[&str] = &[
     "invite",
     "login",
     "logout",
+    "reset",
     "robots",
     "setup",
     "static",

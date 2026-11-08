@@ -30,6 +30,24 @@ pub enum CaptureError {
     Size(u32, u32, u32, u32),
 }
 
+#[cfg(target_os = "linux")]
+impl CaptureError {
+    /// The portal refused or failed, as opposed to reading the result.
+    pub fn is_portal(&self) -> bool {
+        matches!(self, Self::Portal(_))
+    }
+
+    /// The user closed a portal dialog.
+    pub fn is_cancelled(&self) -> bool {
+        matches!(
+            self,
+            Self::Portal(ashpd::Error::Response(
+                ashpd::desktop::ResponseError::Cancelled
+            ))
+        )
+    }
+}
+
 /// A captured screen: the PNG as the portal wrote it.
 pub struct Capture {
     pub png: Vec<u8>,

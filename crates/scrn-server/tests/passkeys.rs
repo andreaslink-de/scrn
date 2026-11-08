@@ -621,3 +621,237 @@ async fn passkeys_are_off_for_ip_base_urls() {
             .contains("data-passkey-login-button")
     );
 }
+
+// --- Passkey instead of the current password -------------------------------
+
+const NEW_PASSWORD: &str = "a brand new passphrase";
+
+async fn set_password(browser: &mut Client, current: &str) -> TestResponse {
+    browser
+        .submit(
+            "/app/settings",
+            "/app/settings/password",
+            &[
+                ("current_password", current),
+                ("password", NEW_PASSWORD),
+                ("password_confirm", NEW_PASSWORD),
+            ],
+        )
+        .await
+}
+
+/// Signs in with the passkey from a fresh browser.
+async fn passkey_login(server: &TestServer, key: &mut SoftKey, ip: &str) -> Client {
+    let (mut browser, csrf) = login_page(server, ip).await;
+    let start = json_body(&login_start(&mut browser, &csrf, "alice").await);
+    let credential = key.sign(&start["options"]);
+    let done = post_json(
+        &mut browser,
+        "/login/passkey/finish",
+        &csrf,
+        &json!({"ceremony": start["ceremony"], "credential": credential}),
+    )
+    .await;
+    assert_eq!(done.status, StatusCode::OK, "{}", done.body);
+    browser
+}
+
+async fn confirm(browser: &mut Client, csrf: &str, key: &mut SoftKey) -> TestResponse {
+    let start = post_json(browser, "/app/passkeys/confirm/start", csrf, &json!({})).await;
+    assert_eq!(start.status, StatusCode::OK, "{}", start.body);
+    let start = json_body(&start);
+    let credential = key.sign(&start["options"]);
+    post_json(
+        browser,
+        "/app/passkeys/confirm/finish",
+        csrf,
+        &json!({"ceremony": start["ceremony"], "credential": credential}),
+    )
+    .await
+}
+
+#[tokio::test]
+async fn a_fresh_passkey_login_replaces_the_current_password() {
+    let server = TestServer::new().await;
+    let (_, mut browser, csrf) = logged_in(&server, "alice").await;
+    let mut key = SoftKey::new(1);
+    register(&mut browser, &csrf, &key, "Laptop").await;
+
+    let mut passkey_browser = passkey_login(&server, &mut key, "192.0.2.2").await;
+    let page = passkey_browser.get("/app/settings").await;
+    assert!(!page.body.contains(r#"name="current_password""#));
+    set_password(&mut passkey_browser, "")
+        .await
+        .assert_redirect("/app/settings?password=changed#password");
+    // The password session from before is signed out.
+    browser.get("/app").await.assert_redirect("/login");
+    let mut fresh = server.client("192.0.2.3");
+    fresh
+        .login("alice", NEW_PASSWORD)
+        .await
+        .assert_redirect("/app");
+}
+
+#[tokio::test]
+async fn passkey_confirmation_expires() {
+    let server = TestServer::new().await;
+    let (_, mut browser, csrf) = logged_in(&server, "alice").await;
+    let mut key = SoftKey::new(1);
+    register(&mut browser, &csrf, &key, "Laptop").await;
+    let mut passkey_browser = passkey_login(&server, &mut key, "192.0.2.2").await;
+
+    server
+        .clock
+        .advance(scrn_server::auth::PASSKEY_CONFIRM_WINDOW);
+    let page = passkey_browser.get("/app/settings").await;
+    assert!(page.body.contains(r#"name="current_password""#));
+    let refused = set_password(&mut passkey_browser, "").await;
+    assert_eq!(refused.status, StatusCode::UNPROCESSABLE_ENTITY);
+}
+
+#[tokio::test]
+async fn confirm_with_passkey_on_the_settings_page() {
+    let server = TestServer::new().await;
+    let (user, mut browser, csrf) = logged_in(&server, "alice").await;
+
+    // Without a passkey there is nothing to confirm with.
+    let page = browser.get("/app/settings").await;
+    assert!(!page.body.contains("data-passkey-confirm-button"));
+    let none = post_json(
+        &mut browser,
+        "/app/passkeys/confirm/start",
+        &csrf,
+        &json!({}),
+    )
+    .await;
+    assert_eq!(none.status, StatusCode::BAD_REQUEST);
+
+    let mut key = SoftKey::new(1);
+    register(&mut browser, &csrf, &key, "Laptop").await;
+    let page = browser.get("/app/settings").await;
+    assert!(page.body.contains("data-passkey-confirm-button"));
+    assert!(page.body.contains(r#"name="current_password""#));
+
+    let done = confirm(&mut browser, &csrf, &mut key).await;
+    assert_eq!(done.status, StatusCode::OK, "{}", done.body);
+    assert_eq!(
+        json_body(&done)["redirect"],
+        "/app/settings?confirmed=1#password"
+    );
+    let page = browser.get("/app/settings?confirmed=1").await;
+    assert!(page.body.contains("Mit Passkey bestätigt."));
+    assert!(!page.body.contains(r#"name="current_password""#));
+    set_password(&mut browser, "forgotten")
+        .await
+        .assert_redirect("/app/settings?password=changed#password");
+    let stored = users::get_by_id(&server.state.db, user.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(scrn_server::crypto::verify_password(
+        NEW_PASSWORD,
+        stored.password_hash.as_deref().unwrap()
+    ));
+}
+
+#[tokio::test]
+async fn confirmation_needs_the_users_own_passkey() {
+    let server = TestServer::new().await;
+    let (_, mut alice, alice_csrf) = logged_in(&server, "alice").await;
+    let mut alice_key = SoftKey::new(1);
+    register(&mut alice, &alice_csrf, &alice_key, "Laptop").await;
+
+    server.create_user("bob", Role::User).await;
+    let mut bob_browser = server.client("192.0.2.9");
+    bob_browser
+        .login("bob", PASSWORD)
+        .await
+        .assert_redirect("/app");
+    let bob_csrf = bob_browser.get("/app/settings").await.csrf();
+    let bob_key = SoftKey::new(2);
+    register(&mut bob_browser, &bob_csrf, &bob_key, "Phone").await;
+
+    // Alice's ceremony cannot be finished in Bob's session.
+    let start = json_body(
+        &post_json(
+            &mut alice,
+            "/app/passkeys/confirm/start",
+            &alice_csrf,
+            &json!({}),
+        )
+        .await,
+    );
+    let credential = alice_key.sign(&start["options"]);
+    let stolen = post_json(
+        &mut bob_browser,
+        "/app/passkeys/confirm/finish",
+        &bob_csrf,
+        &json!({"ceremony": start["ceremony"], "credential": credential}),
+    )
+    .await;
+    assert_eq!(stolen.status, StatusCode::BAD_REQUEST);
+
+    // A different key than the registered one is rejected.
+    let start = json_body(
+        &post_json(
+            &mut bob_browser,
+            "/app/passkeys/confirm/start",
+            &bob_csrf,
+            &json!({}),
+        )
+        .await,
+    );
+    let mut stranger = SoftKey::new(3);
+    let credential = stranger.sign(&start["options"]);
+    let wrong = post_json(
+        &mut bob_browser,
+        "/app/passkeys/confirm/finish",
+        &bob_csrf,
+        &json!({"ceremony": start["ceremony"], "credential": credential}),
+    )
+    .await;
+    assert_eq!(wrong.status, StatusCode::UNAUTHORIZED);
+    let page = bob_browser.get("/app/settings").await;
+    assert!(page.body.contains(r#"name="current_password""#));
+
+    // Wrong CSRF token.
+    let forged = post_json(
+        &mut alice,
+        "/app/passkeys/confirm/start",
+        "forged",
+        &json!({}),
+    )
+    .await;
+    assert_eq!(forged.status, StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn new_admin_is_asked_for_a_passkey() {
+    let server = TestServer::new().await;
+    scrn_server::announce_setup_token(&server.state)
+        .await
+        .unwrap();
+    let token = server.state.issue_setup_token().unwrap();
+    let mut browser = server.client("192.0.2.1");
+    browser
+        .submit(
+            "/setup",
+            "/setup",
+            &[
+                ("setup_token", &token),
+                ("username", "admin"),
+                ("password", PASSWORD),
+                ("password_confirm", PASSWORD),
+            ],
+        )
+        .await
+        .assert_redirect("/app/settings?welcome=1#passkeys");
+    let page = browser.get("/app/settings?welcome=1").await;
+    assert!(page.body.contains("Add a passkey now"));
+    let key = SoftKey::new(1);
+    let csrf = page.csrf();
+    let done = register(&mut browser, &csrf, &key, "Laptop").await;
+    assert_eq!(done.status, StatusCode::OK, "{}", done.body);
+    let page = browser.get("/app/settings?welcome=1").await;
+    assert!(!page.body.contains("Lege jetzt einen Passkey an."));
+}

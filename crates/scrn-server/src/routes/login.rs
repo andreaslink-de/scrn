@@ -6,7 +6,7 @@
 
 use askama::Template;
 use axum::Form;
-use axum::extract::State;
+use axum::extract::{Query, State};
 use axum::http::header::SET_COOKIE;
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Redirect, Response};
@@ -27,7 +27,14 @@ struct LoginPage {
     page: Page,
     csrf: String,
     error: Option<String>,
+    /// The password was just set through a reset link.
+    reset_done: bool,
     passkeys: bool,
+}
+
+#[derive(Deserialize)]
+pub struct ShowQuery {
+    reset: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -46,16 +53,18 @@ pub async fn show(
     State(state): State<AppState>,
     prefs: Prefs,
     headers: HeaderMap,
+    Query(query): Query<ShowQuery>,
     user: Option<CurrentUser>,
 ) -> Result<Response, AppError> {
     if user.is_some() {
         return Ok(Redirect::to("/app").into_response());
     }
     let (csrf, cookie) = auth::form_csrf(&headers, &state)?;
-    Ok(with_cookie(
-        render(&state, prefs, csrf, None, StatusCode::OK)?,
-        cookie,
-    ))
+    let page = LoginPage {
+        reset_done: query.reset.is_some(),
+        ..page(&state, prefs, csrf, None)
+    };
+    Ok(with_cookie(html::render(StatusCode::OK, &page)?, cookie))
 }
 
 pub async fn submit(
@@ -113,7 +122,7 @@ pub async fn submit(
 
     state.login_user_limiter.reset(&user_key);
     sessions::delete_expired(&state.db, now).await?;
-    let cookie = auth::start_session(&state, user.id).await?;
+    let cookie = auth::start_session(&state, user.id, auth::SignIn::Password).await?;
     tracing::info!(user_id = user.id, "user logged in");
     let mut response = ([(SET_COOKIE, cookie)], Redirect::to("/app")).into_response();
     // Remember the user's language and theme for logged-out pages too.
@@ -134,6 +143,18 @@ pub async fn logout(
     Ok(([(SET_COOKIE, cookie)], Redirect::to("/login")).into_response())
 }
 
+fn page(state: &AppState, prefs: Prefs, csrf: String, error: Option<String>) -> LoginPage {
+    // The username is deliberately not echoed back, so the page is the
+    // same for every failed attempt.
+    LoginPage {
+        page: Page::public(prefs, "login.title", Some(csrf.clone()), "/login"),
+        csrf,
+        error,
+        reset_done: false,
+        passkeys: state.passkeys.is_some(),
+    }
+}
+
 fn render(
     state: &AppState,
     prefs: Prefs,
@@ -141,16 +162,5 @@ fn render(
     error: Option<String>,
     status: StatusCode,
 ) -> Result<Response, AppError> {
-    // The username is deliberately not echoed back, so the page is the
-    // same for every failed attempt.
-    let page = Page::public(prefs, "login.title", Some(csrf.clone()), "/login");
-    html::render(
-        status,
-        &LoginPage {
-            page,
-            csrf,
-            error,
-            passkeys: state.passkeys.is_some(),
-        },
-    )
+    html::render(status, &page(state, prefs, csrf, error))
 }

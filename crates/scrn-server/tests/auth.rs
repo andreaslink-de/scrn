@@ -28,7 +28,7 @@ async fn setup_flow_creates_admin_once() {
     browser.get("/").await.assert_redirect("/setup");
     let page = browser.get("/setup").await;
     assert_eq!(page.status, StatusCode::OK);
-    assert!(page.body.contains(r#"<html lang="de" data-theme="dark">"#));
+    assert!(page.body.contains(r#"<html lang="en" data-theme="dark">"#));
 
     // Wrong setup token.
     let wrong = "0".repeat(64);
@@ -45,7 +45,7 @@ async fn setup_flow_creates_admin_once() {
         )
         .await;
     assert_eq!(response.status, StatusCode::FORBIDDEN);
-    assert!(response.body.contains("Einrichtungscode ist ungültig"));
+    assert!(response.body.contains("The setup code is invalid."));
 
     // Password too short.
     let response = browser
@@ -76,7 +76,7 @@ async fn setup_flow_creates_admin_once() {
             ],
         )
         .await;
-    response.assert_redirect("/admin");
+    response.assert_redirect("/app/settings?welcome=1#passkeys");
     let admin = users::get_by_username(&server.state.db, "admin")
         .await
         .unwrap()
@@ -174,7 +174,7 @@ async fn login_and_logout() {
 
     let page = browser.get("/app").await;
     assert_eq!(page.status, StatusCode::OK);
-    assert!(page.body.contains(r#"<span class="muted">bob</span>"#));
+    assert!(page.body.contains(r#"<span class="nav-user">bob</span>"#));
     browser.get("/login").await.assert_redirect("/app");
 
     // Logout needs the session CSRF token.
@@ -234,11 +234,7 @@ async fn failed_logins_look_identical() {
     }
     for response in &responses {
         assert_eq!(response.status, StatusCode::UNAUTHORIZED);
-        assert!(
-            response
-                .body
-                .contains("Benutzername oder Passwort ist falsch.")
-        );
+        assert!(response.body.contains("Username or password is incorrect."));
     }
     // Same page apart from the per-browser CSRF token.
     let normalize = |r: &common::TestResponse| r.body.replace(&r.csrf(), "");
@@ -371,7 +367,7 @@ async fn invitation_is_single_use() {
             ],
         )
         .await;
-    response.assert_redirect("/app");
+    response.assert_redirect("/app/settings?welcome=1#passkeys");
     assert!(newcomer.get("/app").await.body.contains("dave"));
     let dave = users::get_by_username(&server.state.db, "dave")
         .await
@@ -383,7 +379,7 @@ async fn invitation_is_single_use() {
     let mut second = server.client("192.0.2.6");
     let page = second.get(&link).await;
     assert_eq!(page.status, StatusCode::NOT_FOUND);
-    assert!(page.body.contains("bereits benutzt"));
+    assert!(page.body.contains("has already been used"));
     let csrf = second.get("/login").await.csrf();
     let response = second
         .post(

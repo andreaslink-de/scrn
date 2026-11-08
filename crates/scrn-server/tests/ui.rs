@@ -28,13 +28,13 @@ async fn save_settings(browser: &mut Client, fields: &[(&str, &str)]) -> common:
 }
 
 #[tokio::test]
-async fn first_visit_is_german_and_dark_with_strict_headers() {
+async fn first_visit_is_english_and_dark_with_strict_headers() {
     let server = TestServer::new().await;
     server.create_user("alice", Role::User).await;
     let page = server.client("192.0.2.1").get("/login").await;
     assert_eq!(page.status, StatusCode::OK);
-    assert!(page.body.contains(&html_tag("de", "dark")));
-    assert!(page.body.contains("Anmelden"));
+    assert!(page.body.contains(&html_tag("en", "dark")));
+    assert!(page.body.contains("Sign in"));
     assert_eq!(page.headers["content-security-policy"], PAGE_CSP);
     assert_eq!(page.headers["x-frame-options"], "DENY");
     assert_eq!(page.headers["x-content-type-options"], "nosniff");
@@ -122,6 +122,14 @@ async fn settings_persist_and_follow_the_user() {
     let (user, mut browser) = logged_in(&server, "alice", Role::User).await;
     let page = browser.get("/app/settings").await;
     assert!(page.body.contains(&html_tag("de", "dark")));
+    // The custom days field is marked so the stylesheet shows it only while
+    // "custom" is chosen.
+    assert!(page.body.contains(
+        r#"<div class="field expiry-custom">
+<label for="custom_days">"#
+    ));
+    let css = browser.get(&asset_url("app.css")).await.body;
+    assert!(css.contains(r#"option[value="custom"]:not(:checked)) .expiry-custom"#));
 
     let response = save_settings(
         &mut browser,
@@ -289,7 +297,7 @@ async fn new_accounts_keep_the_page_language() {
             ],
         )
         .await
-        .assert_redirect("/app");
+        .assert_redirect("/app/settings?welcome=1#passkeys");
     let bob = users::get_by_username(&server.state.db, "bob")
         .await
         .unwrap()
@@ -303,15 +311,15 @@ async fn error_pages_use_the_visitor_language() {
     let mut browser = server.client("192.0.2.1");
     let page = browser.get("/does/not/exist").await;
     assert_eq!(page.status, StatusCode::NOT_FOUND);
-    assert!(page.body.contains(&html_tag("de", "dark")));
-    assert!(page.body.contains("Die Seite wurde nicht gefunden."));
+    assert!(page.body.contains(&html_tag("en", "dark")));
+    assert!(page.body.contains("The page was not found."));
     assert_eq!(page.headers["content-security-policy"], PAGE_CSP);
 
-    browser.cookies.insert("scrn_lang".into(), "en".into());
+    browser.cookies.insert("scrn_lang".into(), "de".into());
     browser.cookies.insert("scrn_theme".into(), "light".into());
     let page = browser.get("/does/not/exist").await;
-    assert!(page.body.contains(&html_tag("en", "light")));
-    assert!(page.body.contains("The page was not found."));
+    assert!(page.body.contains(&html_tag("de", "light")));
+    assert!(page.body.contains("Die Seite wurde nicht gefunden."));
 }
 
 #[tokio::test]
@@ -459,9 +467,9 @@ async fn footer_shows_version_and_source_link() {
     let server = TestServer::new().await;
     let page = server.client("192.0.2.50").get("/login").await.body;
     assert!(page.contains(&format!(
-        r#"<span class="version">v{}</span>"#,
+        r#"<span class="version" title="Version">v{}</span>"#,
         env!("CARGO_PKG_VERSION")
     )));
     assert!(page.contains(r#"href="https://github.com/andreaslink-de/scrn""#));
-    assert!(page.contains(r#"aria-label="Quellcode auf GitHub""#));
+    assert!(page.contains(r#"aria-label="Source code on GitHub""#));
 }

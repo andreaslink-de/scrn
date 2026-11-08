@@ -14,7 +14,7 @@ the desktop client: take a screenshot (Snap), select the relevant area (Crop),
 blur sensitive details (Redact) and add arrows or highlights (Note). The finished
 image is uploaded to your own server and can be shared through a short link.
 
-> **Status:** server 0.3.0, desktop client 0.1.0 for Linux (GNOME on
+> **Status:** server 0.4.0, desktop client 0.1.1 for Linux (GNOME on
 > Wayland); Windows support is in testing. More Linux desktops and macOS
 > follow (see [docs/PLAN.md](docs/PLAN.md)).
 
@@ -80,9 +80,15 @@ cargo tauri build --bundles deb,appimage
 
 Notes from building and testing on GNOME/Wayland:
 
-- The screenshot comes from the xdg-desktop-portal. GNOME asks for the
-  permission once and flashes the screen on every capture; the flash
-  cannot be turned off from the app.
+- The screenshot comes from the xdg-desktop-portal. GNOME flashes the
+  screen on every capture; the flash cannot be turned off from the app.
+- Started from the menu, the client runs as the app `SCRN`, and GNOME only
+  allows screenshots without a dialog once that is stored in the portal's
+  permission store. GNOME's own question needs a parent window, which a
+  tray app lacks, so the portal just refuses. The client then opens its
+  own window and, after *Allow*, stores the permission for `SCRN` itself
+  (once per user). Started from a terminal, it has no app ID and needs no
+  permission.
 - Wayland ignores window positions, so every monitor gets its own
   overlay, put fullscreen on that monitor through GTK.
 - A tray app has no focused window, and Wayland only lets focused clients
@@ -125,11 +131,35 @@ docker compose logs scrn | grep setup_token
 Open `<SCRN_BASE_URL>/setup`, enter the token and create the administrator
 account (password at least 12 characters). The setup page is locked
 afterwards. A restart before the setup is finished prints a new token.
+Right after the setup, the settings page suggests adding a passkey, so the
+administrator has a second way to sign in.
 
 New users can only register through an invitation link: create one on the
 administration page (`/admin`), it is single-use and expires after the chosen
 number of days. Administrators can disable accounts, which also ends their
 sessions.
+
+### Passwords and reset links
+
+Users change their password under *Settings → Password*. They need the
+current password, or a passkey instead: right after signing in with a
+passkey, or after *Confirm with passkey* on that page, the current password
+is not asked for 10 minutes. Changing the password signs out all other
+sessions of the account; API tokens keep working.
+
+Administrators create a *Reset link* for another user on `/admin`. The link
+is shown once, works once within 24 hours, and a newer link replaces an
+older one. Setting a password through it signs out all sessions of that
+account.
+
+An administrator who can no longer sign in gets a reset link on the
+command line of the server:
+
+```sh
+docker compose exec scrn scrn-server reset-link <username>
+```
+
+It prints `<SCRN_BASE_URL>/reset/…`; open it and choose a new password.
 
 ### Web interface
 
@@ -139,7 +169,7 @@ button. The detail view switches the visibility (making an image private
 deletes its short link for good; making it public again creates a new one),
 changes the expiry of a public link and deletes the screenshot.
 
-The web UI speaks German (default) and English and has a dark (default) and a
+The web UI speaks English (default) and German and has a dark (default) and a
 light theme. Logged-in users choose both, plus the default expiry of public
 links, under *Settings* (`/app/settings`); the page also shows the storage
 usage and manages API tokens. Logged-out pages follow the browser language
@@ -187,6 +217,20 @@ curl -H "Authorization: Bearer scrn_…" <SCRN_BASE_URL>/api/v1/me
 ```
 
 Revoked tokens and tokens of disabled accounts are rejected with 401.
+
+### Device groups
+
+Every API token belongs to a device group, such as *Work* or *Home*. Each
+account starts with one default group; more groups are created, renamed
+and deleted under *Settings → Device groups*. A token can move to another
+group at any time. A screenshot belongs to the group of the token that
+uploaded it, so its screenshots move along. Screenshots uploaded before
+groups existed belong to the default group. Deleting a group moves its
+tokens to the default group.
+
+With two or more groups the gallery shows a second filter row to show only
+one group. The desktop client needs no change: the token decides the
+group.
 
 ### Uploading
 
@@ -266,7 +310,7 @@ any other proxy works the same way.
 
 2. Choose the image. Releases are published as
    `ghcr.io/andreaslink-de/scrn:<version>` (and `latest`); set
-   `SCRN_IMAGE=ghcr.io/andreaslink-de/scrn:0.3.0` in `.env` to use one.
+   `SCRN_IMAGE=ghcr.io/andreaslink-de/scrn:0.4.0` in `.env` to use one.
    Without `SCRN_IMAGE`, Compose builds the image from the checkout.
 
 3. Start it: `mkdir -p data && docker compose pull && docker compose up -d`

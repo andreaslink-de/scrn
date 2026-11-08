@@ -135,6 +135,15 @@ a {
   margin: 0;
 }
 
+/* The account name, set apart from the menu links by a divider. */
+.nav-user {
+  padding-left: 1rem;
+  margin-left: 0.25rem;
+  border-left: 1px solid var(--border);
+  font-weight: 600;
+  color: var(--text);
+}
+
 /* Layout */
 
 main {
@@ -204,6 +213,10 @@ footer {
 
 .version {
   font-variant-numeric: tabular-nums;
+  font-size: 0.8rem;
+  padding: 0.05rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
 }
 
 .repo-link {
@@ -331,6 +344,17 @@ button.small {
 }
 
 .inline-form .field {
+  margin: 0;
+}
+
+/* Several small forms side by side, e.g. the actions of a table row. */
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.actions form {
   margin: 0;
 }
 
@@ -589,6 +613,19 @@ a.button {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.95rem;
   letter-spacing: 0.02em;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.short-code:hover,
+.short-code:focus-visible {
+  color: var(--accent);
+}
+
+/* The custom expiry field only shows while "custom" is chosen. Browsers
+   without :has() always show it. */
+form:has(select[name="expiry"] option[value="custom"]:not(:checked)) .expiry-custom {
+  display: none;
 }
 
 /* Off-screen text field for the copy fallback without HTTPS. */
@@ -747,7 +784,8 @@ details[open] summary {
 
 /* Passkeys */
 
-.passkey-login {
+.passkey-login,
+.passkey-confirm {
   margin-top: 1.25rem;
 }
 
@@ -766,7 +804,8 @@ details[open] summary {
   border-top: 1px solid var(--border);
 }
 
-.passkey-login .alert {
+.passkey-login .alert,
+.passkey-confirm .alert {
   margin-top: 0.75rem;
 }
 

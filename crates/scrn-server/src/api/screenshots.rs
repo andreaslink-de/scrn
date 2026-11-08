@@ -96,7 +96,7 @@ pub async fn upload(
     storage::write(&files_dir, user.id, id, &processed.png, &processed.thumb)
         .await
         .map_err(|err| ApiError::Internal(format!("writing screenshot files failed: {err}")))?;
-    let shot = match store(&state, user.id, id, &processed, visibility, expiry_days).await {
+    let shot = match store(&state, &api_user, id, &processed, visibility, expiry_days).await {
         Ok(shot) => shot,
         Err(err) => {
             if let Err(remove_err) = storage::remove(&files_dir, user.id, id).await {
@@ -141,7 +141,7 @@ async fn process_image(state: &AppState, data: axum::body::Bytes) -> Result<Proc
 /// concurrent uploads of the same user cannot exceed the quota together.
 async fn store(
     state: &AppState,
-    user_id: i64,
+    api_user: &ApiUser,
     id: Uuid,
     processed: &Processed,
     visibility: Visibility,
@@ -151,6 +151,7 @@ async fn store(
     let size = |n: usize| i64::try_from(n).map_err(|_| ApiError::ImageTooLarge);
     let (bytes, thumb_bytes) = (size(processed.png.len())?, size(processed.thumb.len())?);
 
+    let user_id = api_user.user.id;
     let mut tx = state.db.begin_with("BEGIN IMMEDIATE").await?;
     // Read the user again: the admin may have changed the quota meanwhile.
     let user = users::get_by_id(&mut *tx, user_id)
@@ -175,6 +176,7 @@ async fn store(
         let new = NewScreenshot {
             id,
             user_id,
+            token_id: Some(api_user.token_id),
             public,
             width: i64::from(processed.width),
             height: i64::from(processed.height),
@@ -211,7 +213,8 @@ pub async fn list(
             .filter(|n| (1..=MAX_LIST_LIMIT).contains(n))
             .ok_or(ApiError::BadRequest("limit must be between 1 and 100"))?,
     };
-    let shots = screenshots::list_for_user(&state.db, api_user.user.id, None, limit, 0).await?;
+    let shots =
+        screenshots::list_for_user(&state.db, api_user.user.id, None, None, limit, 0).await?;
     Ok(Json(ScreenshotList {
         screenshots: shots.iter().map(|shot| info(&state, shot)).collect(),
     }))

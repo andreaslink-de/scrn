@@ -38,7 +38,7 @@ jobs:
       run:
         working-directory: client
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install system libraries for Tauri
         run: |
@@ -62,7 +62,7 @@ jobs:
         run: cargo tauri build --bundles deb,appimage
 
       - name: Keep the packages as artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: scrn-client-linux
           path: |

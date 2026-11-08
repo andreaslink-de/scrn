@@ -10,6 +10,7 @@ use super::{RepoError, Sha256};
 pub struct ApiToken {
     pub id: i64,
     pub user_id: i64,
+    pub group_id: i64,
     pub name: String,
     pub created_at: i64,
     pub last_used_at: Option<i64>,
@@ -19,23 +20,29 @@ pub struct ApiToken {
 /// Selected columns, shared by all queries of this module.
 macro_rules! columns {
     () => {
-        "id, user_id, name, created_at, last_used_at, revoked_at"
+        "id, user_id, group_id, name, created_at, last_used_at, revoked_at"
     };
 }
 
+/// Creates a token in `group_id`, or in the user's default group for
+/// `None`. The database rejects a group of another user.
 pub async fn create(
     db: impl SqliteExecutor<'_>,
     user_id: i64,
+    group_id: Option<i64>,
     name: &str,
     token_hash: &Sha256,
     now: i64,
 ) -> Result<ApiToken, RepoError> {
     let sql = concat!(
-        "INSERT INTO api_tokens (user_id, name, token_hash, created_at) \
-         VALUES (?, ?, ?, ?) RETURNING ",
+        "INSERT INTO api_tokens (user_id, group_id, name, token_hash, created_at) \
+         VALUES (?, COALESCE(?, (SELECT id FROM device_groups WHERE user_id = ? AND is_default = 1)), \
+         ?, ?, ?) RETURNING ",
         columns!()
     );
     Ok(sqlx::query_as(sql)
+        .bind(user_id)
+        .bind(group_id)
         .bind(user_id)
         .bind(name)
         .bind(&token_hash[..])
@@ -92,6 +99,28 @@ pub async fn revoke(
     Ok(result.rows_affected() == 1)
 }
 
+/// Moves a token of `user_id` into another group of the same user.
+/// Returns false if the token or the group does not belong to the user.
+pub async fn set_group(
+    db: impl SqliteExecutor<'_>,
+    id: i64,
+    user_id: i64,
+    group_id: i64,
+) -> Result<bool, RepoError> {
+    let result = sqlx::query(
+        "UPDATE api_tokens SET group_id = ? WHERE id = ? AND user_id = ? \
+         AND EXISTS (SELECT 1 FROM device_groups WHERE id = ? AND user_id = ?)",
+    )
+    .bind(group_id)
+    .bind(id)
+    .bind(user_id)
+    .bind(group_id)
+    .bind(user_id)
+    .execute(db)
+    .await?;
+    Ok(result.rows_affected() == 1)
+}
+
 /// Updates `last_used_at`.
 pub async fn touch_last_used(
     db: impl SqliteExecutor<'_>,
@@ -115,7 +144,7 @@ mod tests {
     async fn create_find_and_touch() {
         let (_dir, pool) = test_util::pool().await;
         let user = test_util::user(&pool, "alice").await;
-        let token = create(&pool, user.id, "laptop", &test_util::hash(1), 100)
+        let token = create(&pool, user.id, None, "laptop", &test_util::hash(1), 100)
             .await
             .unwrap();
         assert_eq!(token.name, "laptop");
@@ -143,7 +172,7 @@ mod tests {
     async fn revoked_token_is_not_active() {
         let (_dir, pool) = test_util::pool().await;
         let user = test_util::user(&pool, "alice").await;
-        let token = create(&pool, user.id, "laptop", &test_util::hash(1), 100)
+        let token = create(&pool, user.id, None, "laptop", &test_util::hash(1), 100)
             .await
             .unwrap();
         assert!(revoke(&pool, token.id, user.id, 200).await.unwrap());
@@ -165,7 +194,7 @@ mod tests {
         let (_dir, pool) = test_util::pool().await;
         let alice = test_util::user(&pool, "alice").await;
         let bob = test_util::user(&pool, "bob").await;
-        let token = create(&pool, alice.id, "laptop", &test_util::hash(1), 100)
+        let token = create(&pool, alice.id, None, "laptop", &test_util::hash(1), 100)
             .await
             .unwrap();
         assert!(!revoke(&pool, token.id, bob.id, 200).await.unwrap());
@@ -182,13 +211,13 @@ mod tests {
         let (_dir, pool) = test_util::pool().await;
         let alice = test_util::user(&pool, "alice").await;
         let bob = test_util::user(&pool, "bob").await;
-        create(&pool, alice.id, "old", &test_util::hash(1), 100)
+        create(&pool, alice.id, None, "old", &test_util::hash(1), 100)
             .await
             .unwrap();
-        create(&pool, alice.id, "new", &test_util::hash(2), 200)
+        create(&pool, alice.id, None, "new", &test_util::hash(2), 200)
             .await
             .unwrap();
-        create(&pool, bob.id, "bob", &test_util::hash(3), 300)
+        create(&pool, bob.id, None, "bob", &test_util::hash(3), 300)
             .await
             .unwrap();
         let names: Vec<_> = list_for_user(&pool, alice.id)
@@ -204,28 +233,57 @@ mod tests {
     async fn constraints() {
         let (_dir, pool) = test_util::pool().await;
         let user = test_util::user(&pool, "alice").await;
-        create(&pool, user.id, "a", &test_util::hash(1), 100)
+        create(&pool, user.id, None, "a", &test_util::hash(1), 100)
             .await
             .unwrap();
         assert!(matches!(
-            create(&pool, user.id, "b", &test_util::hash(1), 100).await,
+            create(&pool, user.id, None, "b", &test_util::hash(1), 100).await,
             Err(RepoError::Conflict)
         ));
         assert!(matches!(
-            create(&pool, user.id, "", &test_util::hash(2), 100).await,
+            create(&pool, user.id, None, "", &test_util::hash(2), 100).await,
             Err(RepoError::Db(_))
         ));
         assert!(matches!(
-            create(&pool, 999, "ghost", &test_util::hash(3), 100).await,
+            create(&pool, 999, None, "ghost", &test_util::hash(3), 100).await,
             Err(RepoError::Db(_))
         ));
+
+        // A token can only be in a group of its own user.
+        let bob = test_util::user(&pool, "bob").await;
+        let bobs_group = crate::repo::device_groups::create(&pool, bob.id, "Work", 100)
+            .await
+            .unwrap();
+        assert!(matches!(
+            create(
+                &pool,
+                user.id,
+                Some(bobs_group),
+                "c",
+                &test_util::hash(4),
+                100
+            )
+            .await,
+            Err(RepoError::Db(_))
+        ));
+        let token = list_for_user(&pool, user.id).await.unwrap().remove(0);
+        assert!(
+            !set_group(&pool, token.id, user.id, bobs_group)
+                .await
+                .unwrap()
+        );
+        assert!(
+            !set_group(&pool, token.id, bob.id, bobs_group)
+                .await
+                .unwrap()
+        );
     }
 
     #[tokio::test]
     async fn deleting_the_user_cascades() {
         let (_dir, pool) = test_util::pool().await;
         let user = test_util::user(&pool, "alice").await;
-        create(&pool, user.id, "laptop", &test_util::hash(1), 100)
+        create(&pool, user.id, None, "laptop", &test_util::hash(1), 100)
             .await
             .unwrap();
         users::delete(&pool, user.id).await.unwrap();
