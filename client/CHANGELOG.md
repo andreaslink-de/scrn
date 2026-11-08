@@ -15,6 +15,9 @@ format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - KDE Plasma, Sway and Hyprland: screenshots through their portals, and
   through `grim` on wlroots compositors whose portal cannot take them.
   The README lists what each desktop needs and how to bind a shortcut.
+- Keyboard shortcuts through the GlobalShortcuts portal where the desktop
+  offers it (KDE Plasma, Hyprland, GNOME 48 or newer): *capture* with
+  Print suggested, and *copy-last*.
 
 ### Changed
 

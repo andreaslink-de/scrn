@@ -19,10 +19,9 @@ Packages for Linux come with each client release (`client-v*` tags):
   entry. The installer is not signed yet, so SmartScreen asks once
   (*More info → Run anyway*).
 
-Start SCRN from the app menu; it lives in the tray. For a keyboard
-shortcut on Linux, add `scrn capture` (and `scrn copy-last`) under
-*Settings → Keyboard → Custom Shortcuts*; with the AppImage use its full
-path followed by `capture`. On Windows the client registers the shortcut
+Start SCRN from the app menu; it lives in the tray. For keyboard
+shortcuts on Linux see [Keyboard shortcuts](#keyboard-shortcuts); with
+the AppImage use its full path followed by `capture`. On Windows the client registers the shortcut
 itself: Print Screen by default, changeable in the settings. Windows 11
 opens its own screen capture on Print Screen; turn that off under
 *Settings → Accessibility → Keyboard*.
@@ -42,13 +41,28 @@ Service keyring for the token.
 
 On wlroots compositors (Sway, Hyprland and similar) the client runs
 `grim` when the portal cannot take the screenshot, so install `grim`
-there. For a keyboard shortcut, bind `scrn capture`:
+there.
 
-- **KDE Plasma:** *System Settings → Keyboard → Shortcuts → Add New →
-  Command or Script*, command `scrn capture`.
+### Keyboard shortcuts
+
+Where the desktop offers the GlobalShortcuts portal, the client registers
+two shortcuts on start: *capture* (Print suggested) and *copy-last* (no
+key suggested). The desktop decides the keys:
+
+- **KDE Plasma:** asks on the first start; change the keys under
+  *System Settings → Keyboard → Shortcuts → SCRN*.
+- **GNOME 48 or newer:** asks once in a dialog; change the keys under
+  *Settings → Apps → SCRN*.
+- **Hyprland:** binds nothing itself. `hyprctl globalshortcuts` lists
+  the names, then bind one in `~/.config/hypr/hyprland.conf`, e.g.
+  `bind = , Print, global, :capture` (the part before the colon is the app
+  ID the portal saw, empty when started from a terminal or `exec`).
+
+Without the portal (GNOME 46 and older, Sway), bind `scrn capture` and
+`scrn copy-last` in the desktop's own settings:
+
+- **GNOME:** *Settings → Keyboard → Custom Shortcuts*.
 - **Sway** (`~/.config/sway/config`): `bindsym Print exec scrn capture`
-- **Hyprland** (`~/.config/hypr/hyprland.conf`):
-  `bind = , Print, exec, scrn capture`
 
 ## Build packages
 
