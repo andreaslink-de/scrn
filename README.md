@@ -320,9 +320,8 @@ any other proxy works the same way.
 
 To update, change the version in `SCRN_IMAGE`, then run
 `docker compose pull && docker compose up -d`. Migrations run
-automatically at startup; take a backup first (see below). If the image
-on GHCR is private, the server needs `docker login ghcr.io` with a
-personal access token that has the `read:packages` scope.
+automatically at startup; take a backup first (see below). The image on
+GHCR is public, so pulling it needs no login.
 
 The container runs as an unprivileged user with a read-only root file
 system, no capabilities and `no-new-privileges`. By default the port is only
