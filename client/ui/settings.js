@@ -59,6 +59,7 @@ const fill = (view) => {
     ? t("settings.shortcut_failed", view.shortcut_error)
     : "";
   document.getElementById("files").textContent = t("settings.files", view.config_path, view.log_path);
+  document.getElementById("version").textContent = t("settings.version", view.version);
   updateExpiry();
 };
 
@@ -130,3 +131,11 @@ document.title = `${t("settings.title")} · SCRN`;
     show(status, String(err), "error");
   }
 })();
+
+// Links open in the browser, not in this window.
+for (const link of document.querySelectorAll("a[data-page]")) {
+  link.addEventListener("click", (event) => {
+    event.preventDefault();
+    invoke("open_project", { page: link.dataset.page }).catch(() => {});
+  });
+}

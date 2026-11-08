@@ -127,5 +127,9 @@ The tray menu has *Letzten Link kopieren* (also `scrn copy-last`, e.g.
 for a keyboard shortcut) and *Letzte Links* with the last ten uploads:
 public ones are copied, private ones open in the gallery.
 
+*Über SCRN* in the tray menu shows the version and links to the project
+on GitHub and to scrn.dev; the settings show the same at the bottom, and
+`scrn --version` prints the version.
+
 The client log is `client.log` next to the history. It records the
 desktop, monitors and timings, never image data, tokens or links.

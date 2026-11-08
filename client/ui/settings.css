@@ -75,6 +75,7 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .hint { color: var(--muted); margin: 0.35rem 0 0; font-size: 0.9em; }
 .warning { color: var(--warn); margin: 0.35rem 0 0; }
 .files { word-break: break-all; margin-top: 1rem; }
+.about a { color: inherit; }
 
 .row { display: flex; gap: 0.5rem; margin-top: 0.75rem; }
 
