@@ -33,8 +33,11 @@ thiserror = "2.0.21"
 tokio = { version = "1.54.1", features = ["fs", "process", "time"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
-# Screenshot portal (xdg-desktop-portal) over D-Bus, pure Rust.
-ashpd = { version = "0.14.0", default-features = false, features = ["tokio", "screenshot"] }
+# Screenshot and GlobalShortcuts portals (xdg-desktop-portal) over D-Bus,
+# pure Rust.
+ashpd = { version = "0.14.0", default-features = false, features = ["tokio", "screenshot", "global_shortcuts"] }
+# Already pulled in by ashpd; reads the stream of shortcut presses.
+futures-util = { version = "0.3.34", default-features = false }
 # Already pulled in by Tauri; needed to put each overlay fullscreen on its
 # own monitor (Wayland ignores window positions).
 gtk = "0.18.2"

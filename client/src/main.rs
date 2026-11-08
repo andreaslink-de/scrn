@@ -17,6 +17,8 @@ mod i18n;
 mod paths;
 #[cfg(target_os = "linux")]
 mod permission;
+#[cfg(target_os = "linux")]
+mod portal_shortcuts;
 mod report;
 mod secret;
 #[cfg(target_os = "linux")]
@@ -167,6 +169,8 @@ fn main() {
             log_monitors(app.handle());
             #[cfg(windows)]
             shortcut::apply(app.handle());
+            #[cfg(target_os = "linux")]
+            portal_shortcuts::start(app.handle());
             run_command(app.handle(), command, "command");
             Ok(())
         })
