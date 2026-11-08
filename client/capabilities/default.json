@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "The overlays, the editor and the settings may call the app's own commands.",
-  "windows": ["overlay-*", "editor", "settings"],
+  "description": "The overlays, the editor, the settings and the permission window may call the app's own commands.",
+  "windows": ["overlay-*", "editor", "settings", "permission"],
   "permissions": ["core:default", "core:window:allow-close"]
 }
