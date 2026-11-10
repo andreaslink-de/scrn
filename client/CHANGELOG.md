@@ -21,6 +21,8 @@ format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Keyboard shortcuts through the GlobalShortcuts portal where the desktop
   offers it (KDE Plasma, Hyprland, GNOME 48 or newer): *capture* with
   Print suggested, and *copy-last*.
+- Windows: *Record* next to the shortcut field takes the next key
+  combination, so the shortcut no longer has to be typed.
 
 ### Changed
 
