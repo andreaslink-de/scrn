@@ -121,7 +121,9 @@ in the GNOME Keyring or the Windows Credential Manager.
 4. The tray shows empty brackets while the upload runs. A public upload
    puts its short link on the clipboard; a private one has no link and
    shows up in the gallery. Without a server, or when the upload fails,
-   the image is saved under `~/Pictures/SCRN` instead.
+   the image is saved in the folder `SCRN` inside your pictures folder
+   instead (e.g. `~/Bilder/SCRN` or `~/Pictures/SCRN`, as the system names
+   it).
 
 The tray menu has *Letzten Link kopieren* (also `scrn copy-last`, e.g.
 for a keyboard shortcut) and *Letzte Links* with the last ten uploads:

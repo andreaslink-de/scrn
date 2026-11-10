@@ -49,7 +49,7 @@ pub struct Settings {
     /// Link lifetime of public uploads in days, 0 for never; `None` uses
     /// the default of the account on the server.
     pub expires_in_days: Option<u32>,
-    /// Also save every upload under `~/Pictures/SCRN`.
+    /// Also save every upload under `SCRN` in the pictures folder.
     pub keep_copy: bool,
     /// Start the client with the desktop session.
     pub autostart: bool,
