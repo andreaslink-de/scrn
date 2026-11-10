@@ -1,15 +1,20 @@
 // Selection overlay: shows the frozen screen and lets the user drag a
 // rectangle. Coordinates are converted to image pixels before they are
-// sent to the app.
+// sent to the app. Every monitor has its own overlay window; the one where
+// the drag started tells the others the selection in image pixels, so a
+// selection across monitors shows on each of them.
 
 import { t, translate } from "./i18n.js";
 
 const { invoke, convertFileSrc } = window.__TAURI__.core;
+const { emit, listen } = window.__TAURI__.event;
+const SELECTION_EVENT = "overlay-selection";
 translate();
 const canvas = document.getElementById("screen");
 const box = document.getElementById("selection");
 const size = document.getElementById("size");
 const hint = document.getElementById("hint");
+const dim = document.getElementById("dim");
 
 let info = null;
 let start = null;
@@ -48,14 +53,67 @@ const draw = (image) => {
   ctx.drawImage(image, s.x, s.y, s.width, s.height, 0, 0, canvas.width, canvas.height);
 };
 
-const show = (r) => {
+const place = (r) => {
+  dim.hidden = true;
   box.hidden = false;
   box.style.left = `${r.x}px`;
   box.style.top = `${r.y}px`;
   box.style.width = `${r.w}px`;
   box.style.height = `${r.h}px`;
+};
+
+// The selection in image pixels, clamped to the image, for the other
+// overlays.
+const imageRect = (r) => {
+  const sx = info.source.width / window.innerWidth;
+  const sy = info.source.height / window.innerHeight;
+  const left = Math.max(0, info.source.x + r.x * sx);
+  const top = Math.max(0, info.source.y + r.y * sy);
+  const right = Math.min(info.image_width, info.source.x + (r.x + r.w) * sx);
+  const bottom = Math.min(info.image_height, info.source.y + (r.y + r.h) * sy);
+  return { x: left, y: top, w: Math.max(0, right - left), h: Math.max(0, bottom - top) };
+};
+
+let pending = null;
+const broadcast = (r) => {
+  const first = pending === null;
+  pending = imageRect(r);
+  if (first) {
+    requestAnimationFrame(() => {
+      emit(SELECTION_EVENT, { from: label, rect: pending }).catch(() => {});
+      pending = null;
+    });
+  }
+};
+
+const show = (r) => {
+  place(r);
+  size.hidden = false;
   const px = toImage(r);
   size.textContent = `${px.width} × ${px.height}`;
+  broadcast(r);
+};
+
+// A selection made on another monitor: show the part that lies on this
+// one, or dim the whole screen if none does.
+const showRemote = (rect) => {
+  const s = info.source;
+  const sx = window.innerWidth / s.width;
+  const sy = window.innerHeight / s.height;
+  const left = Math.max(0, (rect.x - s.x) * sx);
+  const top = Math.max(0, (rect.y - s.y) * sy);
+  const right = Math.min(window.innerWidth, (rect.x + rect.w - s.x) * sx);
+  const bottom = Math.min(window.innerHeight, (rect.y + rect.h - s.y) * sy);
+  start = null;
+  current = null;
+  hint.hidden = true;
+  size.hidden = true;
+  if (right <= left || bottom <= top) {
+    box.hidden = true;
+    dim.hidden = false;
+    return;
+  }
+  place({ x: left, y: top, w: right - left, h: bottom - top });
 };
 
 const finish = async () => {
@@ -105,8 +163,15 @@ window.addEventListener("keydown", (event) => {
   }
 });
 
+const label = window.__TAURI__.window.getCurrentWindow().label;
+
 (async () => {
   info = await invoke("overlay_info");
+  await listen(SELECTION_EVENT, (event) => {
+    if (event.payload.from !== label && info) {
+      showRemote(event.payload.rect);
+    }
+  });
   note(
     `css=${window.innerWidth}x${window.innerHeight} dpr=${window.devicePixelRatio} ` +
       `screen=${window.screen.width}x${window.screen.height} image=${info.image_width}x${info.image_height}`,

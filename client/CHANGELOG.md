@@ -27,6 +27,12 @@ format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - The permission window appears on GNOME only; it is the only desktop
   that keeps the screenshot permission in the permission store.
 
+### Fixed
+
+- A selection across several monitors shows on every monitor it covers,
+  not only on the one where the drag started; monitors outside it are
+  dimmed.
+
 ## [0.1.1] - 2026-11-07
 
 ### Fixed
