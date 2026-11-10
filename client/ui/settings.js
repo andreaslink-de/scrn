@@ -139,3 +139,69 @@ for (const link of document.querySelectorAll("a[data-page]")) {
     invoke("open_project", { page: link.dataset.page }).catch(() => {});
   });
 }
+
+// Recording a shortcut: the next key combination fills the field. The
+// registered shortcut is released meanwhile, or it would swallow the keys.
+const shortcutInput = document.getElementById("shortcut");
+const recordButton = document.getElementById("record");
+const MODIFIERS = ["Control", "Alt", "Shift", "Meta", "AltGraph", "OS"];
+let recording = null;
+
+// `KeyboardEvent.code` as the shortcut parser reads it: "KeyS" -> "S".
+const accelerator = (event) => {
+  const parts = [];
+  if (event.ctrlKey) parts.push("Ctrl");
+  if (event.altKey) parts.push("Alt");
+  if (event.shiftKey) parts.push("Shift");
+  if (event.metaKey) parts.push("Super");
+  parts.push(event.code.replace(/^Key(?=[A-Z]$)/, "").replace(/^Digit(?=[0-9]$)/, ""));
+  return parts.join("+");
+};
+
+const stopRecording = (value) => {
+  if (!recording) return;
+  window.removeEventListener("keydown", recording, true);
+  window.removeEventListener("keyup", recording, true);
+  window.removeEventListener("blur", cancelRecording);
+  recording = null;
+  shortcutInput.classList.remove("recording");
+  shortcutInput.placeholder = "PrintScreen";
+  shortcutInput.readOnly = false;
+  if (value !== undefined) shortcutInput.value = value;
+  invoke("resume_shortcut").catch(() => {});
+};
+
+const cancelRecording = () => stopRecording();
+
+recordButton.addEventListener("click", async () => {
+  if (recording) {
+    stopRecording();
+    return;
+  }
+  try {
+    await invoke("pause_shortcut");
+  } catch {
+    return;
+  }
+  const previous = shortcutInput.value;
+  shortcutInput.value = "";
+  shortcutInput.placeholder = t("settings.recording");
+  shortcutInput.readOnly = true;
+  shortcutInput.classList.add("recording");
+  recording = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.code === "Escape" && event.type === "keydown") {
+      stopRecording(previous);
+      return;
+    }
+    // Windows reports Print Screen only when it is released.
+    const printScreen = event.code === "PrintScreen";
+    if (event.type === "keyup" && !printScreen) return;
+    if (MODIFIERS.includes(event.key) || !event.code) return;
+    stopRecording(accelerator(event));
+  };
+  window.addEventListener("keydown", recording, true);
+  window.addEventListener("keyup", recording, true);
+  window.addEventListener("blur", cancelRecording);
+});

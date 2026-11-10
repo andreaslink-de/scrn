@@ -174,6 +174,8 @@ fn main() {
             forget_token,
             allow_screenshots,
             open_project,
+            pause_shortcut,
+            resume_shortcut,
             note
         ])
         .setup(move |app| {
@@ -1042,13 +1044,25 @@ fn open_settings(app: &AppHandle) -> tauri::Result<()> {
     if let Some(window) = app.get_webview_window(SETTINGS) {
         return window.set_focus();
     }
-    WebviewWindowBuilder::new(app, SETTINGS, WebviewUrl::App("settings.html".into()))
+    let window = WebviewWindowBuilder::new(app, SETTINGS, WebviewUrl::App("settings.html".into()))
         .title("SCRN")
         .inner_size(560.0, 680.0)
         .min_inner_size(420.0, 480.0)
         .center()
         .focused(true)
         .build()?;
+    // Closed while recording a shortcut: register the saved one again.
+    #[cfg(windows)]
+    {
+        let app = app.clone();
+        window.on_window_event(move |event| {
+            if matches!(event, tauri::WindowEvent::Destroyed) {
+                shortcut::apply(&app);
+            }
+        });
+    }
+    #[cfg(not(windows))]
+    let _ = window;
     Ok(())
 }
 
@@ -1214,6 +1228,25 @@ async fn forget_token(
         .map_err(|_| t("error.keyring").to_owned())?;
     report::note("token removed");
     settings_view(&app, settings).await
+}
+
+/// Releases the keyboard shortcut while the settings record a new one, so
+/// the keys reach the window.
+#[tauri::command]
+fn pause_shortcut(app: AppHandle) {
+    #[cfg(windows)]
+    shortcut::release(&app);
+    #[cfg(not(windows))]
+    let _ = app;
+}
+
+/// Registers the saved keyboard shortcut again after recording.
+#[tauri::command]
+fn resume_shortcut(app: AppHandle) {
+    #[cfg(windows)]
+    shortcut::apply(&app);
+    #[cfg(not(windows))]
+    let _ = app;
 }
 
 /// Lets the overlay and the editor add their own observations to the log.

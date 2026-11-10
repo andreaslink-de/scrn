@@ -17,6 +17,13 @@ pub fn plugin() -> tauri::plugin::TauriPlugin<tauri::Wry> {
         .build()
 }
 
+/// Unregisters the shortcut until [`apply`] runs again.
+pub fn release(app: &AppHandle) {
+    if let Err(err) = app.global_shortcut().unregister_all() {
+        report::note(format!("releasing the shortcut failed: {err}"));
+    }
+}
+
 /// Registers the shortcut from the settings in place of the old one and
 /// keeps the error, if any, for the settings window.
 pub fn apply(app: &AppHandle) {
