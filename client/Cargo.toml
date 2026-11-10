@@ -20,6 +20,9 @@ tauri-build = { version = "2.7.4", features = [] }
 
 [dependencies]
 arboard = { version = "3.7", default-features = false }
+# Pictures folder: XDG user dirs on Linux, known folders on Windows;
+# already pulled in by Tauri.
+dirs = "7.0.0"
 keyring = "4"
 notify-rust = { version = "4.18.2", default-features = false, features = ["z-with-tokio"] }
 png = "0.18.1"

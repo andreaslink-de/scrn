@@ -27,6 +27,15 @@ format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - The permission window appears on GNOME only; it is the only desktop
   that keeps the screenshot permission in the permission store.
 
+### Fixed
+
+- Windows: no console window next to the tray app; closing it no longer
+  quits the client.
+- Saved images go to the pictures folder the system names, such as
+  `~/Bilder` on a German Linux desktop or a Pictures folder moved into
+  OneDrive on Windows, instead of always `~/Pictures`. Images saved
+  before stay where they are.
+
 ## [0.1.1] - 2026-11-07
 
 ### Fixed
