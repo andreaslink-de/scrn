@@ -4,7 +4,10 @@
 //! |------|-------|---------|
 //! | settings | `$XDG_CONFIG_HOME/scrn/config.json` | `%APPDATA%\SCRN\config.json` |
 //! | history, log | `$XDG_STATE_HOME/scrn/` | `%LOCALAPPDATA%\SCRN\` |
-//! | saved images | `$XDG_PICTURES_DIR/SCRN` or `~/Pictures/SCRN` | `%USERPROFILE%\Pictures\SCRN` |
+//! | saved images | `SCRN` in `XDG_PICTURES_DIR` (`~/.config/user-dirs.dirs`) | `SCRN` in the Pictures known folder |
+//!
+//! The pictures folder has a localized name, such as `~/Bilder`, and on
+//! Windows it may be moved, e.g. into OneDrive; the system says where.
 
 use std::path::PathBuf;
 
@@ -58,11 +61,24 @@ pub fn log_file() -> Option<PathBuf> {
     state_dir().map(|d| d.join("client.log"))
 }
 
-/// The folder for saved images, `SCRN` in the pictures folder.
+/// The folder for saved images, `SCRN` in the pictures folder the system
+/// names: on Linux from `XDG_PICTURES_DIR` in `user-dirs.dirs`, on
+/// Windows the Pictures known folder. `~/Pictures` only when there is none.
 pub fn pictures_dir() -> PathBuf {
-    #[cfg(not(windows))]
-    let pictures = env_dir("XDG_PICTURES_DIR").or_else(|| home().map(|h| h.join("Pictures")));
-    #[cfg(windows)]
-    let pictures = env_dir("USERPROFILE").map(|h| h.join("Pictures"));
-    pictures.unwrap_or_else(std::env::temp_dir).join("SCRN")
+    dirs::picture_dir()
+        .filter(|p| p.is_absolute())
+        .or_else(|| dirs::home_dir().map(|h| h.join("Pictures")))
+        .unwrap_or_else(std::env::temp_dir)
+        .join("SCRN")
+}
+
+#[cfg(test)]
+mod pictures_tests {
+    #[test]
+    fn saved_images_go_to_scrn_in_an_absolute_folder() {
+        let dir = super::pictures_dir();
+        assert!(dir.is_absolute(), "{}", dir.display());
+        assert!(dir.ends_with("SCRN"));
+        println!("pictures: {}", dir.display());
+    }
 }

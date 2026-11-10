@@ -5,8 +5,11 @@
 //! portal, a fullscreen overlay per monitor to select an area and an editor
 //! for arrows, highlights and blurred areas. The finished image is
 //! uploaded to the SCRN server and its link copied (`scrn copy-last` copies
-//! it again); without a server it is saved under `~/Pictures/SCRN`.
-//! Observations go to the client log (see [`report`]).
+//! it again); without a server it is saved under `SCRN` in the pictures
+//! folder. Observations go to the client log (see [`report`]).
+
+// A release build on Windows is a GUI program: no console window.
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod api;
 mod capture;

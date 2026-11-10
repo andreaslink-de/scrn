@@ -16,6 +16,12 @@ ignore = [
     # verifies RS256 signatures with public keys of passkeys; the server
     # never holds an RSA private key. No fixed version exists yet.
     { id = "RUSTSEC-2023-0071", reason = "only public-key verification is used (webauthn-rs), not affected" },
+    # SQLite before 3.54.0 can return stale memory when it opens a database
+    # together with a crafted -wal file. The server only opens its own
+    # scrn.db in the data directory, which only it and the administrator
+    # write; it never opens uploaded database files. sqlx 0.9.0 still
+    # requires libsqlite3-sys 0.37; drop this once sqlx allows >= 0.39.
+    { id = "RUSTSEC-2026-0459", reason = "only the server's own database is opened, never one from a less trusted party" },
 ]
 
 [licenses]

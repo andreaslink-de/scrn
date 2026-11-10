@@ -29,6 +29,12 @@ format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Windows: no console window next to the tray app; closing it no longer
+  quits the client.
+- Saved images go to the pictures folder the system names, such as
+  `~/Bilder` on a German Linux desktop or a Pictures folder moved into
+  OneDrive on Windows, instead of always `~/Pictures`. Images saved
+  before stay where they are.
 - A selection across several monitors shows on every monitor it covers,
   not only on the one where the drag started; monitors outside it are
   dimmed.
