@@ -74,15 +74,26 @@ const imageRect = (r) => {
   return { x: left, y: top, w: Math.max(0, right - left), h: Math.max(0, bottom - top) };
 };
 
+// At most one event per 16 ms. A timer, not requestAnimationFrame:
+// WebKitGTK may hold back animation frames during a drag across monitors.
 let pending = null;
+let sent = false;
 const broadcast = (r) => {
   const first = pending === null;
   pending = imageRect(r);
   if (first) {
-    requestAnimationFrame(() => {
-      emit(SELECTION_EVENT, { from: label, rect: pending }).catch(() => {});
+    setTimeout(() => {
+      const rect = pending;
       pending = null;
-    });
+      emit(SELECTION_EVENT, { from: label, rect })
+        .then(() => {
+          if (!sent) {
+            sent = true;
+            note(`${label} sends its selection to the other overlays`);
+          }
+        })
+        .catch((err) => note(`${label}: sending the selection failed: ${err}`));
+    }, 16);
   }
 };
 
@@ -167,8 +178,13 @@ const label = window.__TAURI__.window.getCurrentWindow().label;
 
 (async () => {
   info = await invoke("overlay_info");
+  let received = false;
   await listen(SELECTION_EVENT, (event) => {
     if (event.payload.from !== label && info) {
+      if (!received) {
+        received = true;
+        note(`${label} shows the selection from ${event.payload.from}`);
+      }
       showRemote(event.payload.rect);
     }
   });
