@@ -14,9 +14,9 @@ the desktop client: take a screenshot (Snap), select the relevant area (Crop),
 blur sensitive details (Redact) and add arrows or highlights (Note). The finished
 image is uploaded to your own server and can be shared through a short link.
 
-> **Status:** server 0.4.0, desktop client 0.1.1 for Linux (GNOME on
-> Wayland); Windows, KDE Plasma, Sway and Hyprland are in testing. macOS
-> follows (see [docs/PLAN.md](docs/PLAN.md)).
+> **Status:** server 0.4.0, desktop client 0.2.0 for Linux (GNOME on
+> Wayland) and Windows 10/11; KDE Plasma, Sway and Hyprland are in
+> testing. macOS follows (see [docs/PLAN.md](docs/PLAN.md)).
 
 ## Components
 

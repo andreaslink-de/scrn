@@ -5,6 +5,8 @@ format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-12
+
 ### Added
 
 - Windows 10 and 11: capture of all monitors with xcap, an overlay on
