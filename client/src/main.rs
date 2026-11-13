@@ -28,6 +28,7 @@ mod secret;
 mod session;
 #[cfg(windows)]
 mod shortcut;
+mod update;
 
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -72,6 +73,8 @@ struct AppState {
     uploads: AtomicUsize,
     /// Why the keyboard shortcut could not be registered, if it failed.
     shortcut_error: Mutex<Option<String>>,
+    /// A newer client release, once the update check found one.
+    update: Mutex<Option<update::Available>>,
 }
 
 fn lock<T>(slot: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
@@ -188,6 +191,7 @@ fn main() {
             shortcut::apply(app.handle());
             #[cfg(target_os = "linux")]
             portal_shortcuts::start(app.handle());
+            update::start(app.handle());
             run_command(app.handle(), command, "command");
             Ok(())
         })
@@ -301,7 +305,16 @@ fn tray_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
             &MenuItem::with_id(app, "website", "scrn.dev", true, None::<&str>)?,
         ],
     )?;
-    Menu::with_items(
+    let update = lock(&state.update).clone().map(|found| {
+        MenuItem::with_id(
+            app,
+            "update",
+            t("tray.update").replace("{0}", &found.version),
+            true,
+            None::<&str>,
+        )
+    });
+    let menu = Menu::with_items(
         app,
         &[
             &item("capture", "tray.capture", true)?,
@@ -317,7 +330,13 @@ fn tray_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
             &about,
             &item("quit", "tray.quit", true)?,
         ],
-    )
+    )?;
+    // A newer version goes on top, where it is seen.
+    if let Some(update) = update {
+        menu.prepend(&PredefinedMenuItem::separator(app)?)?;
+        menu.prepend(&update?)?;
+    }
+    Ok(menu)
 }
 
 /// `AbCd1234 · vor 5 Min.` for a public link, `privat · …` otherwise.
@@ -373,6 +392,12 @@ fn on_menu(app: &AppHandle, id: &str) {
         }
         "project" => desktop::open_url(app, PROJECT_URL.to_owned()),
         "website" => desktop::open_url(app, WEBSITE_URL.to_owned()),
+        "update" => {
+            let found = lock(&app.state::<AppState>().update).clone();
+            if let Some(found) = found {
+                desktop::open_url(app, found.url);
+            }
+        }
         "settings" => {
             if let Err(err) = open_settings(app) {
                 report::note(format!("opening the settings failed: {err}"));
@@ -1175,7 +1200,7 @@ async fn save_settings(
     }
     config::save(&settings).map_err(|e| e.describe())?;
     report::note(format!(
-        "settings saved: server {}, {:?}, expiry {:?}, keep copy {}, autostart {}, shortcut {:?}",
+        "settings saved: server {}, {:?}, expiry {:?}, keep copy {}, autostart {}, shortcut {:?}, update check {}",
         if settings.is_configured() {
             "set"
         } else {
@@ -1185,10 +1210,18 @@ async fn save_settings(
         settings.expires_in_days,
         settings.keep_copy,
         settings.autostart,
-        settings.shortcut
+        settings.shortcut,
+        settings.check_updates
     ));
+    let check_now = settings.check_updates && !old.check_updates;
+    if !settings.check_updates {
+        *lock(&state.update) = None;
+    }
     *lock(&state.settings) = settings.clone();
     refresh_tray(&app);
+    if check_now {
+        update::check_soon(&app);
+    }
     #[cfg(windows)]
     shortcut::apply(&app);
     settings_view(&app, settings).await

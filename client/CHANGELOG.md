@@ -5,6 +5,13 @@ format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Update check: once a day the client looks for a newer client release
+  on GitHub and shows it at the top of the tray menu and once as a
+  notification; the entry opens the release page. On by default, can be
+  turned off in the settings.
+
 ## [0.2.0] - 2026-11-12
 
 ### Added

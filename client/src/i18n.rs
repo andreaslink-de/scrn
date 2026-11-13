@@ -47,6 +47,12 @@ pub fn tr(lang: Lang, key: &str) -> &'static str {
         "tray.about" => ("Über SCRN", "About SCRN"),
         "tray.project" => ("Projekt auf GitHub", "Project on GitHub"),
         "tray.private" => ("privat", "private"),
+        "tray.update" => ("Update auf {0} verfügbar …", "Update to {0} available …"),
+        "notify.update" => ("SCRN {0} ist verfügbar", "SCRN {0} is available"),
+        "notify.update_body" => (
+            "Im Tray-Menü öffnet „Update“ die Release-Seite.",
+            "“Update” in the tray menu opens the release page.",
+        ),
         "notify.copied" => ("Link kopiert", "Link copied"),
         "notify.private" => ("Privat hochgeladen", "Uploaded privately"),
         "notify.private_body" => (
@@ -193,7 +199,10 @@ mod tests {
             "tray.gallery",
             "tray.about",
             "tray.project",
+            "tray.update",
             "notify.copied",
+            "notify.update",
+            "notify.update_body",
             "notify.capture_failed",
             "permission.no_app",
             "error.network",

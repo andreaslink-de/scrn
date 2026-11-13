@@ -133,5 +133,13 @@ public ones are copied, private ones open in the gallery.
 on GitHub and to scrn.dev; the settings show the same at the bottom, and
 `scrn --version` prints the version.
 
+Once a day, and 30 seconds after the start, the client asks GitHub's
+public API for the list of releases. When a newer client release is
+published, the tray menu shows *Update auf … verfügbar* at the top, which
+opens the release page, and a notification says so once. Nothing is
+downloaded or installed. The request carries no token or user data, but
+GitHub sees your IP address; *Täglich auf GitHub nach einer neuen Version
+suchen* in the settings turns it off.
+
 The client log is `client.log` next to the history. It records the
 desktop, monitors and timings, never image data, tokens or links.
