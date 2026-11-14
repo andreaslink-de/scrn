@@ -58,6 +58,8 @@ pub struct Settings {
     /// registers shortcuts itself (Windows); on Linux the desktop's own
     /// shortcut settings call `scrn capture`.
     pub shortcut: String,
+    /// Look for a newer client release on GitHub once a day.
+    pub check_updates: bool,
 }
 
 impl Default for Settings {
@@ -69,6 +71,7 @@ impl Default for Settings {
             keep_copy: false,
             autostart: false,
             shortcut: DEFAULT_SHORTCUT.to_owned(),
+            check_updates: true,
         }
     }
 }
@@ -253,6 +256,7 @@ pub(crate) mod tests {
             keep_copy: true,
             autostart: true,
             shortcut: "Ctrl+Shift+S".into(),
+            check_updates: false,
         };
         save_to(&path, &settings).unwrap();
         assert_eq!(load_from(&path).unwrap(), settings);
@@ -262,6 +266,8 @@ pub(crate) mod tests {
         assert_eq!(old.server_url, "https://a.example");
         assert_eq!(old.visibility, Visibility::Private);
         assert_eq!(old.shortcut, DEFAULT_SHORTCUT);
+        // The update check is on for existing installations too.
+        assert!(old.check_updates);
         std::fs::remove_dir_all(dir).unwrap();
     }
 

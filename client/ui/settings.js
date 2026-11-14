@@ -49,6 +49,7 @@ const fill = (view) => {
   }
   document.getElementById("keep_copy").checked = s.keep_copy;
   document.getElementById("autostart").checked = s.autostart;
+  document.getElementById("check_updates").checked = s.check_updates;
   token.value = "";
   tokenState.textContent = t(view.has_token ? "settings.token_stored" : "settings.token_none");
   forgetButton.hidden = !view.has_token;
@@ -69,6 +70,7 @@ const collect = () => ({
   expires_in_days: expiry.value === "" ? null : Number(expiry.value),
   keep_copy: document.getElementById("keep_copy").checked,
   autostart: document.getElementById("autostart").checked,
+  check_updates: document.getElementById("check_updates").checked,
   shortcut: document.getElementById("shortcut").value,
 });
 
