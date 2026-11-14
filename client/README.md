@@ -77,6 +77,24 @@ The packages land in `target/release/bundle/deb` and
 toolchain), `cargo tauri build --bundles nsis` builds the installer in
 `target/release/bundle/nsis`.
 
+Release builds (`.github/workflows/client-release.yml`) add
+`--config tauri.release.conf.json`, which signs every package for the
+updater and writes a `.sig` next to it. That needs the private updater
+key in `TAURI_SIGNING_PRIVATE_KEY` and its password in
+`TAURI_SIGNING_PRIVATE_KEY_PASSWORD` (repository secrets in CI). The
+matching public key is `plugins.updater.pubkey` in `tauri.conf.json`;
+it must not change, or installed clients reject every later update.
+Create a new key pair only together with a release that users install
+by hand:
+
+```sh
+cargo tauri signer generate -w ~/.tauri/scrn-updater.key
+```
+
+The release job writes `latest.json` (from `.github/scripts/latest_json.py`)
+with the download URL and signature of each package and attaches it to
+the release.
+
 ## Build and run
 
 ```sh
@@ -135,11 +153,16 @@ on GitHub and to scrn.dev; the settings show the same at the bottom, and
 
 Once a day, and 30 seconds after the start, the client asks GitHub's
 public API for the list of releases. When a newer client release is
-published, the tray menu shows *Update auf … verfügbar* at the top, which
-opens the release page, and a notification says so once. Nothing is
-downloaded or installed. The request carries no token or user data, but
+published, the tray menu shows *Update auf … installieren* at the top,
+and a notification says so once. Nothing is downloaded before you pick
+that entry. Then the client loads `latest.json` of that release,
+downloads the package for your system (installer on Windows, AppImage or
+.deb on Linux), checks its signature and restarts with the new version.
+The .deb is installed through `pkexec`, which asks for your password. A
+client started from a build folder, or one whose update fails, opens the
+release page instead. The requests carry no token or user data, but
 GitHub sees your IP address; *Täglich auf GitHub nach einer neuen Version
-suchen* in the settings turns it off.
+suchen* in the settings turns the check off.
 
 The client log is `client.log` next to the history. It records the
 desktop, monitors and timings, never image data, tokens or links.

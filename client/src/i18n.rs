@@ -49,9 +49,21 @@ pub fn tr(lang: Lang, key: &str) -> &'static str {
         "tray.private" => ("privat", "private"),
         "tray.update" => ("Update auf {0} verfügbar …", "Update to {0} available …"),
         "notify.update" => ("SCRN {0} ist verfügbar", "SCRN {0} is available"),
+        "tray.update_install" => ("Update auf {0} installieren …", "Install update to {0} …"),
         "notify.update_body" => (
             "Im Tray-Menü öffnet „Update“ die Release-Seite.",
             "“Update” in the tray menu opens the release page.",
+        ),
+        "notify.update_install" => (
+            "Im Tray-Menü installiert „Update“ die neue Version.",
+            "“Update” in the tray menu installs the new version.",
+        ),
+        "notify.update_loading" => ("SCRN {0} wird geladen", "Downloading SCRN {0}"),
+        "notify.update_loading_body" => ("Danach startet SCRN neu.", "SCRN restarts afterwards."),
+        "notify.update_failed" => ("Update fehlgeschlagen", "Update failed"),
+        "notify.update_failed_body" => (
+            "Die Release-Seite ist geöffnet; dort liegt das Paket zum Herunterladen.",
+            "The release page is open; the package is there to download.",
         ),
         "notify.copied" => ("Link kopiert", "Link copied"),
         "notify.private" => ("Privat hochgeladen", "Uploaded privately"),

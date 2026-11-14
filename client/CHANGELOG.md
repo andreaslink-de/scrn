@@ -9,8 +9,12 @@ format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Update check: once a day the client looks for a newer client release
   on GitHub and shows it at the top of the tray menu and once as a
-  notification; the entry opens the release page. On by default, can be
-  turned off in the settings.
+  notification. On by default, can be turned off in the settings.
+- Self-update: picking that entry downloads the signed package of the new
+  release (installer on Windows, AppImage or .deb on Linux), checks its
+  signature and restarts the client. Release builds sign every package
+  and attach `latest.json`; where no update is possible, the entry opens
+  the release page.
 
 ## [0.2.0] - 2026-11-12
 
