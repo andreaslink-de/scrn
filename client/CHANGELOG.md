@@ -5,6 +5,11 @@ format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-14
+
+Install this release by hand once; from here on the client updates
+itself from the tray menu.
+
 ### Added
 
 - Update check: once a day the client looks for a newer client release
