@@ -162,6 +162,7 @@ fn main() {
                 None => report::note("unknown command handed over, ignored"),
             }
         }))
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(state)
         .register_uri_scheme_protocol("scrn", |ctx, request| {
             serve(ctx.app_handle(), request.uri().path())
@@ -309,7 +310,12 @@ fn tray_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         MenuItem::with_id(
             app,
             "update",
-            t("tray.update").replace("{0}", &found.version),
+            t(if update::can_install() {
+                "tray.update_install"
+            } else {
+                "tray.update"
+            })
+            .replace("{0}", &found.version),
             true,
             None::<&str>,
         )
@@ -395,7 +401,7 @@ fn on_menu(app: &AppHandle, id: &str) {
         "update" => {
             let found = lock(&app.state::<AppState>().update).clone();
             if let Some(found) = found {
-                desktop::open_url(app, found.url);
+                update::act(app, found);
             }
         }
         "settings" => {

@@ -1,14 +1,23 @@
 //! Looks for a newer client release on GitHub: at start and then once a
 //! day, unless the user turned it off in the settings. A newer version
-//! shows as an entry in the tray menu and once as a notification; the
-//! entry opens the release page. Nothing is downloaded or installed.
+//! shows as an entry in the tray menu and once as a notification.
+//!
+//! An installed client (NSIS, AppImage or .deb) installs the release when
+//! the user picks the entry: the Tauri updater reads `latest.json` of that
+//! release, downloads the package for this system, checks its signature
+//! against the public key in `tauri.conf.json` and restarts the client.
+//! Nothing happens without that click. A client run from a build folder,
+//! or a failed update, opens the release page instead.
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use serde::Deserialize;
 use tauri::{AppHandle, Manager};
 
 use crate::i18n::t;
+use tauri_plugin_updater::UpdaterExt;
+
 use crate::{AppState, PROJECT_URL, VERSION, desktop, lock, refresh_tray, report};
 
 /// The public list of releases; server and client share the repository.
@@ -24,6 +33,8 @@ pub struct Available {
     pub version: String,
     /// The release page; always below the project's releases.
     pub url: String,
+    /// The update manifest of the release for the Tauri updater.
+    pub manifest: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -88,11 +99,71 @@ async fn check(app: &AppHandle) {
     if known.as_ref() != Some(&found) {
         report::note(format!("update check: {} is available", found.version));
         refresh_tray(app);
-        desktop::notify(
-            &t("notify.update").replace("{0}", &found.version),
-            t("notify.update_body"),
-        );
+        let body = if can_install() {
+            "notify.update_install"
+        } else {
+            "notify.update_body"
+        };
+        desktop::notify(&t("notify.update").replace("{0}", &found.version), t(body));
     }
+}
+
+/// Whether this client can replace itself: only an installed package
+/// knows its bundle type.
+pub fn can_install() -> bool {
+    tauri::utils::platform::bundle_type().is_some()
+}
+
+/// Set while an update downloads, so a second click does not start another.
+static INSTALLING: AtomicBool = AtomicBool::new(false);
+
+/// What the tray entry does: install where possible, else open the page.
+pub fn act(app: &AppHandle, found: Available) {
+    if !can_install() {
+        desktop::open_url(app, found.url);
+        return;
+    }
+    if INSTALLING.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        desktop::notify(
+            &t("notify.update_loading").replace("{0}", &found.version),
+            t("notify.update_loading_body"),
+        );
+        match install(&app, &found).await {
+            Ok(()) => {
+                report::note(format!("update to {} installed, restarting", found.version));
+                app.request_restart();
+            }
+            Err(err) => {
+                report::note(format!("update to {} failed: {err}", found.version));
+                desktop::notify(t("notify.update_failed"), t("notify.update_failed_body"));
+                desktop::open_url(&app, found.url);
+            }
+        }
+        INSTALLING.store(false, Ordering::SeqCst);
+    });
+}
+
+async fn install(app: &AppHandle, found: &Available) -> Result<(), tauri_plugin_updater::Error> {
+    let manifest = found
+        .manifest
+        .parse()
+        .map_err(|_| tauri_plugin_updater::Error::EmptyEndpoints)?;
+    let cleanup = app.clone();
+    let updater = app
+        .updater_builder()
+        .endpoints(vec![manifest])?
+        // On Windows the installer takes over and the client exits.
+        .on_before_exit(move || cleanup.cleanup_before_exit())
+        .build()?;
+    let Some(update) = updater.check().await? else {
+        return Err(tauri_plugin_updater::Error::ReleaseNotFound);
+    };
+    report::note(format!("update: downloading {}", update.version));
+    update.download_and_install(|_, _| {}, || {}).await
 }
 
 async fn fetch() -> Result<Vec<Release>, UpdateError> {
@@ -127,6 +198,9 @@ fn newest(releases: &[Release], current: &str) -> Option<Available> {
         .map(|((major, minor, patch), r)| Available {
             version: format!("{major}.{minor}.{patch}"),
             url: r.html_url.clone(),
+            manifest: format!(
+                "{PROJECT_URL}/releases/download/{TAG_PREFIX}{major}.{minor}.{patch}/latest.json"
+            ),
         })
 }
 
@@ -172,6 +246,10 @@ mod tests {
         let found = newest(&releases, "0.2.0").unwrap();
         assert_eq!(found.version, "0.10.0");
         assert!(found.url.ends_with("/client-v0.10.0"));
+        assert_eq!(
+            found.manifest,
+            "https://github.com/andreaslink-de/scrn/releases/download/client-v0.10.0/latest.json"
+        );
         assert!(newest(&releases, "0.10.0").is_none());
         assert!(newest(&releases, "1.0.0").is_none());
     }
@@ -198,7 +276,17 @@ mod tests {
     fn texts_exist() {
         assert!(t("notify.update").contains("{0}"));
         assert!(t("tray.update").contains("{0}"));
-        assert_ne!(t("notify.update_body"), "");
+        assert!(t("tray.update_install").contains("{0}"));
+        assert!(t("notify.update_loading").contains("{0}"));
+        for key in [
+            "notify.update_body",
+            "notify.update_install",
+            "notify.update_loading_body",
+            "notify.update_failed",
+            "notify.update_failed_body",
+        ] {
+            assert_ne!(t(key), "", "{key}");
+        }
     }
 }
 

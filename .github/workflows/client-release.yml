@@ -1,9 +1,12 @@
 name: Client release
 
 # Builds the packages of the desktop client: .deb and AppImage for Linux,
-# an NSIS installer for Windows. A tag client-v1.2.3 attaches them to a
-# draft GitHub release of that tag, which is published by hand. Started by
-# hand (workflow_dispatch), the packages are only kept as artifacts.
+# an NSIS installer for Windows. Each package is signed with the updater
+# key (secrets TAURI_SIGNING_PRIVATE_KEY and _PASSWORD) and gets a .sig.
+# A tag client-v1.2.3 attaches them, with SHA256SUMS and the update
+# manifest latest.json, to a draft GitHub release of that tag, which is
+# published by hand. Started by hand (workflow_dispatch), the packages are
+# only kept as artifacts.
 
 on:
   push:
@@ -58,8 +61,13 @@ jobs:
       - name: Install the Tauri CLI
         run: cargo install tauri-cli --version "~2.12.4" --locked
 
-      - name: Build the packages
-        run: cargo tauri build --bundles deb,appimage
+      - name: Build and sign the packages
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        # tauri.release.conf.json turns on the updater signatures, which
+        # need the key; local builds go without.
+        run: cargo tauri build --bundles deb,appimage --config tauri.release.conf.json
 
       - name: Keep the packages as artifact
         uses: actions/upload-artifact@v7
@@ -67,7 +75,10 @@ jobs:
           name: scrn-client-linux
           path: |
             client/target/release/bundle/deb/*.deb
+            client/target/release/bundle/deb/*.deb.sig
             client/target/release/bundle/appimage/*.AppImage
+            client/target/release/bundle/appimage/*.AppImage.sig
+          if-no-files-found: error
 
   windows:
     name: build the Windows installer
@@ -90,19 +101,24 @@ jobs:
       - name: Install the Tauri CLI
         run: cargo install tauri-cli --version "~2.12.4" --locked
 
-      - name: Build the installer
-        run: cargo tauri build --bundles nsis
+      - name: Build and sign the installer
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: cargo tauri build --bundles nsis --config tauri.release.conf.json
 
       - name: Keep the installer as artifact
         uses: actions/upload-artifact@v4
         with:
           name: scrn-client-windows
-          path: client/target/release/bundle/nsis/*-setup.exe
+          path: |
+            client/target/release/bundle/nsis/*-setup.exe
+            client/target/release/bundle/nsis/*-setup.exe.sig
+          if-no-files-found: error
 
   release:
     name: attach to a draft release
     needs: [linux, windows]
-    if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -113,20 +129,37 @@ jobs:
           path: dist
           merge-multiple: true
 
-      - name: Attach the packages to a draft release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Also on runs by hand, so the manifest is checked before a release.
+      - name: Write SHA256SUMS and the update manifest
         run: |
           cd dist
           # Artifacts keep their folders (deb/, appimage/); flatten them.
           find . -mindepth 2 -type f -exec mv {} . \;
           find . -mindepth 1 -type d -empty -delete
-          sha256sum * > SHA256SUMS
-          ls -l
-          version="${GITHUB_REF_NAME#client-v}"
+          version="$(sed -n 's/^version = "\(.*\)"/\1/p' ../client/Cargo.toml | head -n1)"
           # The section of this version from client/CHANGELOG.md.
           awk -v v="## [${version}]" 'index($0, v) == 1 {on=1; next} /^## \[/ {on=0} on' \
             ../client/CHANGELOG.md > ../notes.md
+          python3 ../.github/scripts/latest_json.py . "client-v${version}" ../notes.md
+          sha256sum * > SHA256SUMS
+          ls -l
+
+      - name: Keep the manifest as artifact
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: scrn-client-manifest
+          path: |
+            dist/latest.json
+            dist/SHA256SUMS
+
+      - name: Attach the packages to a draft release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd dist
+          version="${GITHUB_REF_NAME#client-v}"
           if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
             gh release upload "${GITHUB_REF_NAME}" * --clobber
           else
